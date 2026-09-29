@@ -1,0 +1,32 @@
+# 依赖
+node_modules/
+
+# 构建产物
+dist/
+build/
+*.js.map
+*.d.ts
+
+# 浏览器扩展打包输出
+*.zip
+*.crx
+*.xpi
+web-ext-artifacts/
+
+# 环境与日志
+.env
+*.log
+
+# 机器本地状态（各 checkout 独立，不入库）
+.kimi-tunnel/
+.codegraph/
+.vscode/
+
+# 机器本地的 agent 集成目录，由 `specify init` 生成
+# 含凭据风险（specify 明确警告），且属可再生成产物
+# 新克隆后补回：specify init --here --force --non-interactive --integration kimi --script ps
+.kimi-code/
+
+# 系统文件
+Thumbs.db
+.DS_Store
