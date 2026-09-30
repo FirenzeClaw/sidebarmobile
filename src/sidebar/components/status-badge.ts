@@ -1,5 +1,6 @@
 // sidebarmobile — 能力状态文案（sidebar）
 // 2026-09-29 | Kimi(speckit-implement) | T039：按 ui-states.md 徽章表逐字定文案（FR-029）
+// 2026-09-29 | Kimi(speckit-fix) | 终审 B2：新增 absent 档文案「未检测到会话」（无会话不得显示为已检测到会话）
 
 import type { CapabilityState } from '../../shared/types.ts';
 

@@ -1,6 +1,8 @@
 // sidebarmobile — 可选权限名单（shared）
 // 2026-09-29 | Kimi(speckit-implement) | T035：把权限名单与浏览器 API 出口分离，使权限适配层可被单测
 // 2026-09-29 | Kimi(speckit-implement) | T055：按 web-ext lint 实测修正 Firefox 侧的 DNR 权限名
+// 2026-09-29 | Kimi(speckit-fix) | 终审 A3：两项授权均申请 scripting（此前从不申请，Tier 2 全链路不可达）
+// 2026-09-29 | Kimi(speckit-fix) | 终审 A3 联动：撤销权限改为逐权限名判断（共享 host 权限 pattern 下避免连带撤销）
 
 import type { GrantKind } from './messages.ts';
 

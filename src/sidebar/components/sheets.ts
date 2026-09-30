@@ -1,6 +1,7 @@
 // sidebarmobile — 底部弹层（sidebar）
 // 2026-09-29 | Kimi(speckit-implement) | T027：标签列表与九宫格菜单的基本形态，供切标签与回主页
 // 2026-09-29 | Kimi(speckit-implement) | T070/T071：标签行委托 tab-bar，并向 app 暴露菜单锚点
+// 2026-09-29 | Kimi(speckit-fix) | 终审 D2：新增 onClosed 回调，供 app 在面板关闭时清空来源绑定
 
 import { clearElement, createElement, requireElement } from './dom.ts';
 import { createIcon } from './icons.ts';

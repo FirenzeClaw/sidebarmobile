@@ -12,13 +12,13 @@
 
 **Language/Version**: TypeScript 5.x（strict）/ Node 24（本机 nvm）
 
-**Primary Dependencies**: webextension-polyfill（API 统一）、esbuild（打包）、Vitest（单测）、Playwright（Chromium E2E）、web-ext（Firefox 冒烟）
+**Primary Dependencies**: webextension-polyfill（API 统一）、esbuild（打包）、Vitest（单测/集成）、Playwright（真实浏览器检查点）、web-ext（Firefox 运行与清单校验）
 
 **Storage**: `browser.storage.local`（键 `session:v1` / `sites:v1` / `meta:v1`，见 [contracts/storage-schema.md](contracts/storage-schema.md)）
 
-**Testing**: Vitest（单元/集成）+ Playwright 持久化上下文加载未打包扩展（E2E）+ Firefox 手动验收清单（[quickstart.md](quickstart.md)）
+**Testing**: Vitest（单元/集成，529 项）+ 六个真实浏览器检查点脚本（Playwright 持久化上下文加载未打包扩展，自带夹具服务生命周期，合计 161 项断言）+ `web-ext lint` 清单校验（[quickstart.md](quickstart.md)）
 
-**Target Platform**: Chrome MV3（`sidePanel`）+ Firefox MV3（`sidebar_action`，≥115）
+**Target Platform**: Chrome MV3（`sidePanel`）+ Firefox MV3（`sidebar_action`，≥128 — `optional_host_permissions` 与 `data_collection_permissions` 所需）
 
 **Project Type**: browser-extension（侧栏 UI）
 
@@ -41,6 +41,8 @@
 | V 不审查不合并 | 每片完成后五轴审查再进入下一片 | PASS |
 | VI 可读性与显式契约 | 消息/存储/清单/UI 四份契约先于实现冻结 | PASS |
 | VII 双端不靠运行时分支 | 清单/后台注册差异构建期分流；能力差异在适配层以能力探测收敛，业务代码无浏览器分支 | PASS |
+
+**实现后复核（2026-09-29 终审）**: 终审发现 7 处 `browser.*` 直用（background/content 绕过适配层），违反宪法 VII，已全部改为经 `adapters/browser-api.ts` 出口；`capability-state` 从 `sidebar/state` 移到 `shared/`（后台曾反向依赖 sidebar）。两处修正均已补测试锁定。
 
 **Post-Phase-1 复核**: 设计产物（research/data-model/contracts/quickstart）未引入新复杂度；双层追踪模型（R3）是浏览器 API 边界的最小应对，Tier 1 无权限要求、Tier 2 复用已有授权，不构成宪法违规。无 Complexity Tracking 条目。
 
@@ -95,16 +97,20 @@ src/
     └── manifest.firefox.json # 构建输入
 
 tests/
-├── unit/                     # url-policy/origin-key/session-store/菜单逻辑
-├── integration/              # 权限流/规则同步/消息协议（mock browser）
-└── e2e/                      # Playwright Chromium + 本地夹具站点
+├── unit/                     # 纯逻辑单测（URL/来源键/消息/会话/状态机/菜单/视图）
+├── integration/              # 授权流/持久化/上报归属（mock browser + mock storage）
+└── helpers/                  # mock-browser（API 替身）、dom-stub、fixture-lifecycle（服务生命周期）
 
 scripts/
-├── build.ts                  # esbuild 多入口 + manifest 分流
-└── fixture-server.ts         # 六类测试页面（FR-037）
+├── build.ts                  # esbuild 多入口 + manifest 分流 + 静态资源拷贝
+├── fixture-server.ts         # 夹具站点（可嵌入/XFO/CSP/登录态/跨源/SPA/新窗口）
+├── generate-icons.ts         # 占位图标（正式图标属设计交付物）
+├── spike-dnr-ua.ts           # 实测 DNR 改写 User-Agent 是否生效
+├── spike-content-script.ts   # 实测 Firefox content script 注入行为
+└── verify-t029|t041|t048|t059|t066|t073.ts  # 六个真实浏览器检查点（自带服务生命周期）
 ```
 
-**Structure Decision**: 单仓库单扩展。`shared/` 与 `adapters/` 保证 UI 不直接触达浏览器 API（宪法 III/VII）；`sidebar` / `background` / `content` 三入口对应扩展运行三上下文；manifest 双份构建期生成，产物 `dist/chrome` 与 `dist/firefox` 即发布包。测试按 quickstart 三层布局。
+**Structure Decision**: 单仓库单扩展。`shared/` 与 `adapters/` 保证 UI 不直接触达浏览器 API（宪法 III/VII）；`sidebar` / `background` / `content` 三入口对应扩展运行三上下文；manifest 双份构建期生成，产物 `dist/chrome` 与 `dist/firefox` 即发布包。测试为「Vitest 单元/集成 + 真实浏览器检查点脚本」两层：不使用 Playwright Test 的 `webServer` 常驻服务，改由检查点脚本自带夹具生命周期（详见 quickstart.md）。
 
 ## Complexity Tracking
 

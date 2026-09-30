@@ -1,5 +1,6 @@
 // sidebarmobile — 会话存储（shared）
 // 2026-09-29 | Kimi(speckit-implement) | T017：实现以通过 T016（contracts/storage-schema.md）
+// 2026-09-29 | Kimi(speckit-fix) | 终审 A1/A2：新增 onChanged 订阅通道；saveSiteSettings 改按字段合并写入，避免整份快照覆盖抹掉授权标记
 
 import { isNavigableUrl, normalizeUrl } from './url-policy.ts';
 import { originKeyFromUrl, originKeyToString } from './origin-key.ts';

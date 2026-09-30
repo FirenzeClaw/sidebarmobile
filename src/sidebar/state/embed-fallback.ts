@@ -1,5 +1,6 @@
 // sidebarmobile — 不可嵌入与降级处理（sidebar）
 // 2026-09-29 | Kimi(speckit-implement) | T052/T053：把嵌入检测与降级覆盖层接到浏览视图（FR-006）
+// 2026-09-29 | Kimi(speckit-fix) | 终审 [建议修改]：dispose 接入标签关闭路径，避免追踪资源随已关闭标签无界增长
 
 import {
   createEmbedDetector,

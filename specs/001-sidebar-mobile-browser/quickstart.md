@@ -2,12 +2,12 @@
 
 **日期**: 2026-09-29 | **关联**: [spec.md](spec.md) 成功标准 · [contracts/](contracts/)
 
-本指南定义端到端验收流程。命令为脚手架任务建立后的约定入口（`package.json` scripts），实现期以此为准接线。
+本指南定义端到端验收流程。命令与 `package.json` scripts 及 `scripts/verify-*.ts` 保持一致（实现完成后已对齐）。
 
 ## 前置条件
 
 - Node 24（本机 nvm `current`）+ npm
-- Chrome（支持 `sidePanel` 的版本）与 Firefox（≥115）
+- Chrome（支持 `sidePanel` 的版本）与 Firefox（≥128，`optional_host_permissions` 与 `data_collection_permissions` 需要）
 - 依赖安装：`npm install`
 
 ## 构建与运行
@@ -15,10 +15,24 @@
 | 目的 | 命令 | 预期产物 |
 |------|------|----------|
 | 类型检查 | `npm run typecheck` | 无错误 |
-| 单元/集成测试 | `npm test` | Vitest 全绿 |
+| 单元/集成测试 | `npm test` | Vitest 全绿（当前 529 项） |
 | 构建双端包 | `npm run build` | `dist/chrome/` 与 `dist/firefox/`（各含对应 manifest） |
-| Chromium E2E | `npm run test:e2e` | Playwright 全绿 |
-| Firefox 冒烟 | `npm run run:firefox` | `web-ext run` 启动并加载扩展 |
+| 夹具站点 | `npm run fixtures` | 六类被测页面，端口 8919 |
+| Firefox 运行 | `npm run run:firefox` | `web-ext run` 启动并加载 `dist/firefox` |
+| Firefox 清单校验 | `npx web-ext lint --source-dir dist/firefox` | 零 error / warning / notice |
+
+真实浏览器检查点（脚本自带夹具服务，端口 8921，跑完自动释放端口与浏览器进程）：
+
+| 脚本 | 覆盖 | 断言数 |
+|------|------|--------|
+| `node --experimental-strip-types scripts/verify-t029.ts` | US1 添加网址与多标签浏览 | 40 |
+| `node --experimental-strip-types scripts/verify-t041.ts` | US2 移动视口与 UA 授权 | 27 |
+| `node --experimental-strip-types scripts/verify-t048.ts` | US3 登录复用授权 | 18 |
+| `node --experimental-strip-types scripts/verify-t059.ts` | US4 嵌入降级与导航追踪 | 21 |
+| `node --experimental-strip-types scripts/verify-t066.ts` | US5 会话恢复 | 27 |
+| `node --experimental-strip-types scripts/verify-t073.ts` | US6 菜单三通道与标签压力 | 28 |
+
+> 进程纪律：这些脚本必须在结束时终止自己启动的服务与浏览器进程。禁止以后台常驻方式启动夹具服务。
 
 Chrome 手动加载：`chrome://extensions` → 开发者模式 → 加载已解压 → `dist/chrome`。
 Firefox 手动加载：`about:debugging` → 临时载入附加组件 → `dist/firefox/manifest.json`。
@@ -46,10 +60,12 @@ Firefox 手动加载：`about:debugging` → 临时载入附加组件 → `dist/
 
 ## 测试站点需求（E2E 夹具）
 
-本地测试服务器需提供六类页面：可嵌入页、XFO 拦截页、登录态页（可设 SameSite 变体）、跨源跳转页、SPA（history API 变 URL）、`target="_blank"` 页。对应 spec FR-037。
+`scripts/fixture-server.ts` 提供七类页面：`/health`（探活）、`/embeddable`（可嵌入，含站内链接与 `target=_blank`）、`/xfo`（`X-Frame-Options: DENY`）、`/csp`（`frame-ancestors 'none'`）、`/login`（可设 `SameSite=None; Secure` 会话）、`/cross-origin`（跨源跳转）、`/spa`（`history.pushState`）、`/blank-target`（`_blank` 与 `window.open`）。对应 spec FR-037。
 
 ## 完成判定
 
-- 上表 1~15 在 Chromium 自动化覆盖；1~14 在 Firefox 手动清单逐项勾选；
-- `npm run typecheck`、`npm test`、`npm run test:e2e`、`npm run build` 全部通过；
+- 六个检查点脚本全部通过（合计 161 项断言），其中：
+  - US1–US6 的核心流程在 Chromium 自动化覆盖；
+  - Firefox 侧由 `web-ext lint`（零 error/warning/notice）+ 运行时能力探测覆盖，**桌面手动逐项勾选尚未执行**（需人工点击权限对话框），已记为待办；
+- `npm run typecheck`、`npm test`、`npm run build` 全部通过；
 - 任一能力降级时 UI 状态与 [ui-states.md](contracts/ui-states.md) 徽章表一致。

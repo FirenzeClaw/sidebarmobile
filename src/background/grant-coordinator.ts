@@ -1,5 +1,8 @@
 // sidebarmobile — 授权协调（background）
 // 2026-09-29 | Kimi(speckit-implement) | T038：按来源申请/撤销授权并现算能力状态（FR-010/FR-013/FR-029/FR-030）
+// 2026-09-29 | Kimi(speckit-fix) | 终审 A3：revokeGrant 改逐权限名判断，避免关闭一项授权连带撤销另一项
+// 2026-09-29 | Kimi(speckit-fix) | 终审 A4：UA 规则存活改以 API 实况判定（await isApplied）
+// 2026-09-29 | Kimi(speckit-fix) | 终审 B2：Cookie 探测结论上抛 present/absent，供能力状态分档
 
 import {
   createCapabilityState,

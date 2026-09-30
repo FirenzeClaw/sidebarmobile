@@ -1,5 +1,7 @@
 // sidebarmobile — 网页浏览视图（sidebar）
 // 2026-09-29 | Kimi(speckit-implement) | T026：每标签一个 iframe 宿主、单视图切换、内容占满（FR-006/FR-025）
+// 2026-09-29 | Kimi(speckit-implement) | T040：移动视口默认与桌面模式（定宽 + scale 还原桌面断点排版）
+// 2026-09-29 | Kimi(speckit-fix) | 终审 B1：resize 重算先收集待处理标签再遍历，修复边遍历边改 Map 导致的死循环（拖宽侧栏即冻结 UI）
 
 import { createElement, requireElement, truncateForLabel } from '../components/dom.ts';
 import type { BrowserTab, DisplayMode } from '../../shared/types.ts';

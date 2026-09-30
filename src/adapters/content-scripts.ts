@@ -1,5 +1,6 @@
 // sidebarmobile — content script 动态注册适配（adapters）
 // 2026-09-29 | Kimi(speckit-implement) | T056：按精确来源注册/注销 Tier 2 上报脚本（contracts/manifest-permissions.md）
+// 2026-09-29 | Kimi(speckit-fix) | 终审 [建议修改]：来源归一改用 originKeyTextFromUrl（DRY）
 
 import { originKeyFromUrl, originKeyTextFromUrl } from '../shared/origin-key.ts';
 

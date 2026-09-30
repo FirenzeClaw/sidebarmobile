@@ -1,5 +1,6 @@
 // sidebarmobile — 网站注册表（sidebar）
 // 2026-09-29 | Kimi(speckit-implement) | T024：实现以通过 T021（FR-004/FR-005/FR-019）
+// 2026-09-29 | Kimi(speckit-fix) | 终审 B5：输入解析复用 parseUrlInput，消除重复的协议判定实现
 
 import { isNavigableUrl, normalizeUrl, parseUrlInput } from '../../shared/url-policy.ts';
 import { originKeyFromUrl, originKeyToString } from '../../shared/origin-key.ts';

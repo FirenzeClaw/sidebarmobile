@@ -3,6 +3,9 @@
 // 2026-09-29 | Kimi(speckit-implement) | 改用 webextension-polyfill 统一双端 API（宪法 VII）
 // 2026-09-29 | Kimi(speckit-implement) | T038：接入授权与 UA 规则消息路由（contracts/runtime-messages.md）
 // 2026-09-29 | Kimi(speckit-implement) | T045/T056/T057：Cookie 授权、content script 动态注册、frame 上报处理
+// 2026-09-29 | Kimi(speckit-fix) | 终审 C1：改经 adapters 出口，移除 polyfill 直引用（宪法 VII）
+// 2026-09-29 | Kimi(speckit-fix) | 终审 D1：新窗口请求改为等待侧栏决策后再补开（避免双开标签）
+// 2026-09-29 | Kimi(speckit-fix) | 终审 [建议修改]：接线 permission-watch，补齐 capabilities.changed 生产者
 
 import {
   createErrorResponse,

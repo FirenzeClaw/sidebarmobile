@@ -1,6 +1,12 @@
 // sidebarmobile — 侧栏应用入口（sidebar）
 // 2026-09-29 | Kimi(speckit-implement) | 初始骨架：仅挂载点占位
 // 2026-09-29 | Kimi(speckit-implement) | T026/T027/T028：装配状态层与视图层，接线会话持久化
+// 2026-09-29 | Kimi(speckit-implement) | T039/T045：站点设置面板接线（模式切换、UA/Cookie 开关、能力徽章）
+// 2026-09-29 | Kimi(speckit-implement) | T054/T057/T059：frame 上报归属、不确定态徽章、四类上下文菜单接线
+// 2026-09-29 | Kimi(speckit-fix) | 终审 A1/A2：订阅 storage 变更镜像授权状态，避免侧栏内存态覆盖后台写入
+// 2026-09-29 | Kimi(speckit-fix) | 终审 B3/C2：上报标题走上限校验；handleFrameReport 增加来源授权校验
+// 2026-09-29 | Kimi(speckit-fix) | 终审 D1/D2：新窗口请求由侧栏决策；设置面板绑定来源并校验后再渲染
+// 2026-09-29 | Kimi(speckit-fix) | 终审 [建议修改]：关闭标签时释放嵌入追踪资源；重绘前解绑旧菜单锚点
 
 import { createNavBar, createNoticeBar, createTopBar, type TopBarState } from './components/nav-bar.ts';
 import { createSheets, createToast } from './components/sheets.ts';

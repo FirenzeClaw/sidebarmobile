@@ -1,5 +1,6 @@
 // sidebarmobile — 运行时消息协议（shared）
 // 2026-09-29 | Kimi(speckit-implement) | T015：实现以通过 T014（contracts/runtime-messages.md）
+// 2026-09-29 | Kimi(speckit-fix) | 终审 [建议修改]：删除三条死协议消息（tabs.open-external / ua.sync-rules / session.dirty），并为 capabilities.changed 补齐生产者
 
 import { parseOriginKey } from './origin-key.ts';
 import { isNavigableUrl } from './url-policy.ts';

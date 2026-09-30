@@ -1,5 +1,6 @@
 // sidebarmobile — URL 策略（shared）
 // 2026-09-29 | Kimi(speckit-implement) | T011：实现以通过 T010（FR-002/FR-003/FR-005）
+// 2026-09-29 | Kimi(speckit-fix) | 终审 B5：协议判定拆为两级，修复 example.com:8080 / localhost:8000 被误判为不支持协议
 
 /**
  * [DONE] URL 校验与规范化。

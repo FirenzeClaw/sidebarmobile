@@ -1,5 +1,6 @@
 // sidebarmobile — 图标子菜单渲染（sidebar）
 // 2026-09-29 | Kimi(speckit-implement) | T071：把状态机接到 DOM（ARIA menu + 定位 + 三通道）
+// 2026-09-29 | Kimi(speckit-fix) | 终审 [建议修改]：新增 pruneDetached，重绘前解绑已脱离文档的锚点（此前每轮累积监听器）
 
 import { clearElement, createElement, requireElement } from './dom.ts';
 import { createIcon, type IconName } from './icons.ts';

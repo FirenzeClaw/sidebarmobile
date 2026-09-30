@@ -1,5 +1,7 @@
 // sidebarmobile — UA 改写适配（adapters）
 // 2026-09-29 | Kimi(speckit-implement) | T037：按 T036 spike 结论实现 DNR 会话规则路径（FR-007/FR-010）
+// 2026-09-29 | Kimi(speckit-fix) | 终审 A4：isApplied 改为以 getSessionRules 实况为准，避免实例重建后误报已降级
+// 2026-09-29 | Kimi(speckit-fix) | 终审 [建议修改]：originPattern 改用 originKeyToString，消除手写实现
 
 import { originKeyFromUrl, originKeyToString } from '../shared/origin-key.ts';
 

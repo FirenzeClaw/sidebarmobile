@@ -1,5 +1,8 @@
 // sidebarmobile — frame 上报处理（background）
 // 2026-09-29 | Kimi(speckit-implement) | T057：实现以通过 T050（FR-020/FR-021/FR-023）
+// 2026-09-29 | Kimi(speckit-fix) | 终审 B3：标题上限与归一化移交 shared/frame-report-spec，两侧共用
+// 2026-09-29 | Kimi(speckit-fix) | 终审 D1：新窗口请求改由侧栏决策，后台仅在 handled=false 时补开（避免双开）
+// 2026-09-29 | Kimi(speckit-fix) | 终审 [建议修改]：来源归一改用 originKeyTextFromUrl（DRY）
 
 import { isNavigableUrl, normalizeUrl } from '../shared/url-policy.ts';
 import { originKeyTextFromUrl } from '../shared/origin-key.ts';

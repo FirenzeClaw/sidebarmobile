@@ -1,5 +1,6 @@
 // sidebarmobile — 会话持久化接线（sidebar）
 // 2026-09-29 | Kimi(speckit-implement) | T028：变更防抖保存、启动恢复、关闭标签立即落盘（FR-016/FR-017）
+// 2026-09-29 | Kimi(speckit-fix) | 终审 A1/A2：构造时建立 storage 镜像并按字段归属合并写入，确保授权标记以存储为唯一真相
 
 import type { SaveResult, SessionStore } from '../../shared/session-store.ts';
 import type { SiteSettings } from '../../shared/types.ts';

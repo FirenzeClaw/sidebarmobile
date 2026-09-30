@@ -1,5 +1,6 @@
 // sidebarmobile — 数据模型类型（shared）
 // 2026-09-29 | Kimi(speckit-implement) | T018：按 data-model.md 定义全部持久化与运行时实体
+// 2026-09-29 | Kimi(speckit-fix) | 终审 B2：CookieCapabilityState 增 absent 档（无会话不得显示为已检测到会话）
 
 import type { OriginKey } from './origin-key.ts';
 

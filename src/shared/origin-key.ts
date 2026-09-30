@@ -1,5 +1,6 @@
 // sidebarmobile — 精确来源键（shared）
 // 2026-09-29 | Kimi(speckit-implement) | T013：实现以通过 T012（FR-005、data-model §1）
+// 2026-09-29 | Kimi(speckit-fix) | 终审 [建议修改]：新增 originKeyTextFromUrl，消除 app/background/adapters 中五处手写来源键实现（DRY）
 
 import { isAllowedProtocol } from './url-policy.ts';
 

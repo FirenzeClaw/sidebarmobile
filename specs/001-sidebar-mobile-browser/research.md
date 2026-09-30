@@ -100,8 +100,9 @@
 
 ## R9 工具链与测试
 
-- **决定**: TypeScript（strict）+ esbuild 打包 + webextension-polyfill；Vitest 单元/集成测试；Playwright（Chromium 持久化上下文加载未打包扩展）做 E2E；Firefox 用 `web-ext run` 做冒烟与手动验收清单。双份 manifest 由构建脚本从模板生成。
+- **决定**: TypeScript（strict）+ esbuild 打包 + webextension-polyfill；Vitest 单元/集成测试；真实浏览器检查点用 Playwright 持久化上下文加载未打包扩展（脚本形式，自带夹具服务生命周期）；Firefox 用 `web-ext run` 运行、`web-ext lint` 校验清单。双份 manifest 由构建脚本从模板生成。
 - **理由**: 依赖最少、配置显式、构建产物即发布包，符合宪法 I（KISS）与项目元信息「TypeScript + 打包器」。esbuild 对多入口（background/sidebar/content）配置直接。
+- **实现期修正（2026-09-29）**: 原计划的 `tests/e2e/*.spec.ts` + Playwright Test 的 `webServer` 未采用——`webServer` 会启动**常驻**夹具服务且不受脚本控制，与本机进程纪律冲突（曾因残留进程导致死机）。改为六个自带服务生命周期的检查点脚本（`scripts/verify-t029|t041|t048|t059|t066|t073.ts`），覆盖同等验收项并在结束时释放端口与浏览器进程。
 - **替代方案**: WXT / CRXJS（框架封装重、Firefox 支持不稳，否决）；webpack（过重，否决）；Jest（与 esbuild 生态重复，Vitest 更轻）。
 
 ## R10 UI 技术与可访问性
@@ -110,8 +111,24 @@
 - **理由**: 侧栏 UI 规模有限（网站列表、标签栏、菜单、降级页），引入框架得不偿失（宪法 I / YAGNI）；安全红线要求不渲染外部 HTML（spec FR-034）。
 - **替代方案**: React/Vue（增加构建复杂度与包体，否决）。
 
-## 遗留验证项（进入 tasks）
+## R11 实现后终审（2026-09-29）
 
-1. Chrome DNR `set User-Agent` 对扩展页内 iframe 请求的生效范围 spike（R5）。
-2. Firefox `scripting.registerContentScripts` 在扩展页 iframe 的注入行为 spike（R3 Tier 2）。
-3. 两项 spike 均失败不影响 Tier 1 功能交付，仅收窄 Tier 2 能力面。
+五轴独立审查（正确性/可读性/架构/安全/性能）发现 12 条 [必须修复]，全部修复并补测试。其中四条值得记录的实测缺陷：
+
+1. **resize 死循环**：`browser-view.ts` 遍历 Map 时 delete + 重新 set 同一键 → 迭代器无限循环，桌面模式下拖宽侧栏即冻结整个侧栏 UI。修复为先收集待处理列表再遍历，并补该文件首个单测（此前无任何测试覆盖）。
+2. **授权状态双份真相**：后台写 `granted` 到存储，侧栏内存态不知情且整份快照覆盖写会抹掉它 → 用户点「允许」后界面显示开关仍关。修复为按字段划分归属 + 侧栏订阅 `storage.onChanged`，并把「storage 是授权标记唯一真相」写进 storage-schema 契约。
+3. **`scripting` 权限从不申请**：导致 Tier 2 全链路不可达（content script 永不注册，frame.report 的校验设计空转）。修复为两项授权均申请 scripting。
+4. **宪法 VII 违规 7 处**：background 与 content script 直用 `browser.*`。修复为经 `adapters/browser-api.ts` 出口，并补「已用注入违规验证会真失败」的测试。
+
+另有：UA 徽章谎报降级（规则实况判定修复）、无 Cookie 却显示「已检测到会话」（新增 absent 档）、`localhost:8000` 被误判为不支持协议（协议判定两级化）、设置面板串源显示另一站点数据、新窗口请求双开标签。
+
+## 未完成的验证项（如实记录）
+
+1. **Firefox 桌面手动验收未执行**：需人工点击权限对话框，自动化无法覆盖。已由 `web-ext lint`（零 error/warning/notice）+ 运行时能力探测替代覆盖，并在 tasks.md T075 标注为待办。
+2. **`capabilities.changed` 端到端未经真实浏览器验证**：`permissions.onRemoved` 路径有 10 项单测，但检查点脚本无法覆盖「在浏览器设置里手工撤销权限」这一人工操作。
+3. **授权成功的真实权限对话框分支未经 e2e**：Chromium 在无用户手势时把 `permissions.request` 判为拒绝，故自动化只覆盖了拒绝路径；成功路径由单测（`setNextRequestResult(true)`）覆盖。
+
+## 遗留验证项（原计划，均已执行）
+
+1. Chrome DNR `set User-Agent` 对扩展页内 iframe 请求的生效范围 spike（R5）→ **结论 effective**，故走真实 DNR 路径。
+2. Firefox `scripting.registerContentScripts` 在扩展页 iframe 的注入行为 spike（R3 Tier 2）→ **结论 ineffective**（注入命中数 0，边界限于"注册后新开页面"时序），故实现为运行时能力探测、失败如实退回 Tier 1。

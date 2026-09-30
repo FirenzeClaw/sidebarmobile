@@ -1,5 +1,8 @@
 // sidebarmobile — 浏览器 API 适配出口（adapters）
 // 2026-09-29 | Kimi(speckit-implement) | T019：统一封装 webextension-polyfill，业务代码禁触 chrome/browser 全局
+// 2026-09-29 | Kimi(speckit-implement) | T037：补 DNR 会话规则出口
+// 2026-09-29 | Kimi(speckit-fix) | 终审 A1：createStorageArea 接 storage.onChanged，供侧栏镜像授权真相
+// 2026-09-29 | Kimi(speckit-fix) | 终审 C1：补 browserNamespace 出口，修复 background/content 直用 browser.* 的宪法 VII 违规
 
 import browser from 'webextension-polyfill';
 import type { StorageArea, SessionStore, StorageChange } from '../shared/session-store.ts';
