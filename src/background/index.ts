@@ -7,6 +7,7 @@
 // 2026-09-29 | Kimi(speckit-fix) | 终审 D1：新窗口请求改为等待侧栏决策后再补开（避免双开标签）
 // 2026-09-29 | Kimi(speckit-fix) | 终审 [建议修改]：接线 permission-watch，补齐 capabilities.changed 生产者
 // 2026-09-30 | Kimi(fix) | 用户实测反馈：request-grant 改 apply-grant，后台只复核（手势约束），不再申请权限
+// 2026-09-30 | Kimi(fix) | 用户实测缺陷：合并两个 onMessage 监听器（前一个对授权消息返回 undefined 会关闭通道，导致 sendApply 永远等不到响应）
 
 import {
   createErrorResponse,
@@ -317,59 +318,30 @@ async function handleMessage(type: string, payload: Record<string, unknown>): Pr
 
     default: {
       // frame.report / frame.open-request 由 content script 方向发起，不走本路由：
-      // 它们经 registerFrameReportListener 单独处理，避免与侧栏的请求-响应通道混在一起
+      // 它们在统一监听器里前置处理（无需响应或刻意不回应），不经 handleMessage
       return undefined;
     }
   }
 }
 
 /**
- * [DONE] 处理来自 content script 的上报（Tier 2）。
+ * [DONE] 统一消息监听器（唯一入口，contracts/runtime-messages.md）。
  *
- * 单独一个监听器：content script 的消息没有"响应"语义（发完即走），
- * 与侧栏的请求-响应消息混在一个监听器里会让返回值的语义变得含糊。
+ * **为什么必须只有一个**：webextension-polyfill / Chrome 的语义是"首个同步返回非 undefined
+ * 的监听器决定响应"，而**同步返回 undefined 会立即关闭通道** —— 后续监听器的异步结果
+ * 再也送不到发送方。此前 frame 上报单独注册了一个监听器（对 `permissions.apply-grant`
+ * 落到末尾 `return undefined`），于是后台虽然处理了授权消息、Promise 也 resolve 了，
+ * 侧栏却永远等不到响应：`sendApply` 卡死，界面表现为「UA 开关变灰卡住、登录复用点击无效」
+ * （2026-09-30 用户实测缺陷，已由 scripts/repro-real-site-grant.ts 复现）。
+ *
+ * 因此每种消息类型在此**只有一条返回路径**：
+ * - `frame.report`：无需响应，返回 undefined（不阻塞发送方，content script 不等待）
+ * - `frame.open-request`：刻意不回应，留给侧栏决策（否则双开标签，终审 D1）
+ * - 其余：同步返回 Promise，由 handleMessage 决定信封内容
  */
-function registerFrameReportListener(): void {
-  const handler = createReportHandler();
-
-  runtimeApi.onMessage((message: unknown) => {
-    const validation = validateRuntimeMessage(message);
-    if (!validation.ok) {
-      return undefined;
-    }
-    const { type, payload } = validation.message;
-
-    if (type === 'frame.report') {
-      handler.handleReport({
-        url: typeof payload['url'] === 'string' ? payload['url'] : '',
-        title: typeof payload['title'] === 'string' ? payload['title'] : '',
-        navKind: payload['navKind'] as 'load' | 'history' | 'hash',
-      });
-      // 上报不需要响应；返回 undefined 让侧栏侧的同类型监听器也能看到（如果它在同一上下文）
-      return undefined;
-    }
-
-    if (type === 'frame.open-request') {
-      /**
-       * 校验归属但**不落地**，也**不回应**（终审 D1）。
-       *
-       * 落地由侧栏负责（它能建扩展内标签，符合 FR-023）；后台若也开一个就是双开。
-       * 回应必须留给侧栏：content script 靠 `{ handled: true }` 决定要不要退回落，
-       * 后台抢先回一个 `undefined` 等于告诉它"没人接手"，于是又会多开一个。
-       */
-      handler.handleOpenRequest({
-        url: typeof payload['url'] === 'string' ? payload['url'] : '',
-        sourceUrl: typeof payload['sourceUrl'] === 'string' ? payload['sourceUrl'] : '',
-      });
-      return undefined;
-    }
-
-    return undefined;
-  });
-}
-
-/** [DONE] 消息路由（contracts/runtime-messages.md） */
 function registerMessageRouter(): void {
+  const frameHandler = createReportHandler();
+
   runtimeApi.onMessage((message: unknown) => {
     const validation = validateRuntimeMessage(message);
     if (!validation.ok) {
@@ -378,6 +350,31 @@ function registerMessageRouter(): void {
     }
 
     const { type, payload } = validation.message;
+
+    if (type === 'frame.report') {
+      frameHandler.handleReport({
+        url: typeof payload['url'] === 'string' ? payload['url'] : '',
+        title: typeof payload['title'] === 'string' ? payload['title'] : '',
+        navKind: payload['navKind'] as 'load' | 'history' | 'hash',
+      });
+      // 上报没有响应语义：返回 undefined，content script 不等待
+      return undefined;
+    }
+
+    if (type === 'frame.open-request') {
+      /**
+       * 校验归属但**不落地**，也**不回应**（终审 D1）。
+       *
+       * 落地由侧栏负责（它能建扩展内标签，符合 FR-023）；后台若也开一个就是双开。
+       * 回应必须留给侧栏：content script 靠 `{ handled: true }` 决定要不要退回落。
+       */
+      frameHandler.handleOpenRequest({
+        url: typeof payload['url'] === 'string' ? payload['url'] : '',
+        sourceUrl: typeof payload['sourceUrl'] === 'string' ? payload['sourceUrl'] : '',
+      });
+      return undefined;
+    }
+
     return handleMessage(type, payload).then(
       (response) => response ?? undefined,
       (error: unknown) => {
@@ -434,5 +431,4 @@ registerSidePanelBehaviour().catch((error: unknown) => {
   console.warn('[background] 初始化失败', error);
 });
 registerMessageRouter();
-registerFrameReportListener();
 registerPermissionWatch();

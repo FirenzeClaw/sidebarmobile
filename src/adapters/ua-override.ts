@@ -38,6 +38,15 @@ export const MOBILE_USER_AGENT =
 const RULE_ID_BASE = 10_000;
 const RULE_ID_RANGE = 50_000;
 
+/**
+ * DNR 调用超时上限（毫秒）。
+ *
+ * 实测（2026-09-30）：权限刚授予的窗口期内 `updateSessionRules` 可能永不 settle，
+ * 导致上游授权流程永久挂起、开关卡在灰色不可点。超时后按 rejected 如实降级，
+ * 让界面能继续工作 —— 宁可降级，不可卡死。
+ */
+const DNR_CALL_TIMEOUT_MS = 3_000;
+
 /** 规则应用结果：applied 为 false 时 mode 说明实际退回到什么状态 */
 export interface UaApplyResult {
   applied: boolean;
@@ -139,6 +148,36 @@ export function createUaOverride(options: UaOverrideOptions): UaOverridePort {
   }
 
   /**
+   * [DONE] 带超时的 DNR 调用。
+   *
+   * **为什么必须加超时**（2026-09-30 用户实测缺陷）：`updateSessionRules` 在权限刚授予的
+   * 窗口期可能**永不 settle**（既不 resolve 也不 reject）。上游 `applyGrantOutcome` 会因此
+   * 永久挂起 —— 存储不写、消息不回，用户看到的是「授权开关永久卡在灰色」，
+   * 而 Cookie 授权走同一路径却正常（它不经过 DNR）。
+   *
+   * 超时后按 `rejected` 处理（如实降级为移动视口），不谎报成功，也不让界面卡死。
+   */
+  async function callDnrWithTimeout(call: (api: NonNullable<UaOverrideOptions['dnr']>) => Promise<void>): Promise<void> {
+    const api = options.dnr;
+    if (api === undefined) {
+      throw new Error('DNR 不可用');
+    }
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        call(api),
+        new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(() => reject(new Error('DNR 调用超时')), DNR_CALL_TIMEOUT_MS);
+        }),
+      ]);
+    } finally {
+      if (timer !== undefined) {
+        clearTimeout(timer);
+      }
+    }
+  }
+
+  /**
    * [DONE] 该来源的规则此刻是否真的在会话里。
    *
    * 查询不可用（DNR 缺失、或没有 `getSessionRules`）时回落到本地缓存 —— 这是唯一的
@@ -155,7 +194,22 @@ export function createUaOverride(options: UaOverrideOptions): UaOverridePort {
       return appliedOrigins.has(originKey);
     }
     try {
-      const rules = await getSessionRules.call(options.dnr);
+      /**
+       * 查询同样要限时：`getSessionRules` 与 `updateSessionRules` 在权限窗口期共享
+       * 同一个挂起风险，而它位于 `computeState` 的必经路径上 —— 挂起会让整条授权流程
+       * 与能力查询一起卡死（2026-09-30 实测缺陷的一部分）。
+       */
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const rules = await Promise.race([
+        getSessionRules.call(options.dnr),
+        new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(() => reject(new Error('DNR 查询超时')), DNR_CALL_TIMEOUT_MS);
+        }),
+      ]).finally(() => {
+        if (timer !== undefined) {
+          clearTimeout(timer);
+        }
+      });
       const live = rules.some((rule) => rule.id === ruleId);
       // 校准缓存：既把丢失的规则摘掉，也把仍然在的补上，避免下次回落时用过时信息
       if (live) {
@@ -192,7 +246,7 @@ export function createUaOverride(options: UaOverrideOptions): UaOverridePort {
           return { applied: false, mode: 'viewport', reason: 'unsupported' };
         }
         try {
-          await options.dnr!.updateSessionRules({ removeRuleIds: [ruleId] });
+          await callDnrWithTimeout((api) => api.updateSessionRules({ removeRuleIds: [ruleId] }));
           return { applied: false, mode: 'viewport' };
         } catch {
           return { applied: false, mode: 'viewport', reason: 'rejected' };
@@ -204,27 +258,30 @@ export function createUaOverride(options: UaOverrideOptions): UaOverridePort {
       }
 
       try {
-        await options.dnr!.updateSessionRules({
-          removeRuleIds: [ruleId],
-          addRules: [
-            {
-              id: ruleId,
-              priority: 1,
-              action: {
-                type: 'modifyHeaders',
-                requestHeaders: [
-                  { header: 'user-agent', operation: 'set', value: userAgent ?? mobileUserAgent },
-                ],
+        await callDnrWithTimeout((api) =>
+          api.updateSessionRules({
+            removeRuleIds: [ruleId],
+            addRules: [
+              {
+                id: ruleId,
+                priority: 1,
+                action: {
+                  type: 'modifyHeaders',
+                  requestHeaders: [
+                    { header: 'user-agent', operation: 'set', value: userAgent ?? mobileUserAgent },
+                  ],
+                },
+                // 条件组合来自 T036 spike 的实测通过项，勿随意增删
+                condition: { requestDomains: [hostname], resourceTypes: ['sub_frame'] },
               },
-              // 条件组合来自 T036 spike 的实测通过项，勿随意增删
-              condition: { requestDomains: [hostname], resourceTypes: ['sub_frame'] },
-            },
-          ],
-        });
+            ],
+          }),
+        );
         appliedOrigins.add(originKey);
         return { applied: true, mode: 'real-ua' };
       } catch {
-        // 规则被拒绝（权限不足、pattern 不匹配、浏览器内部限制）：如实降级，不谎报成功
+        // 规则被拒绝（权限不足、pattern 不匹配、浏览器内部限制）或调用超时：
+        // 如实降级，不谎报成功，也不让上游永久挂起
         appliedOrigins.delete(originKey);
         return { applied: false, mode: 'viewport', reason: 'rejected' };
       }
@@ -239,7 +296,7 @@ export function createUaOverride(options: UaOverrideOptions): UaOverridePort {
         return;
       }
       try {
-        await options.dnr!.updateSessionRules({ removeRuleIds: ruleIds });
+        await callDnrWithTimeout((api) => api.updateSessionRules({ removeRuleIds: ruleIds }));
       } catch {
         // 清理失败不阻断流程：孤儿规则不再被引用，且下次同来源 apply 会先 remove 同 id 再添加
       }
