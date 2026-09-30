@@ -1,0 +1,80 @@
+/* sidebarmobile — 六主题变量（sidebar）
+ * 2026-09-29 | Kimi(speckit-implement) | T025：从 demo/themes.css 移植，色值/字体/圆角一字不改（design-system/MASTER.md §3）
+ * 禁止在本文件之外写死主题色值；语义色（危险/警示/正常）按明/暗分组。
+ */
+
+/* 语义色：六主题共用，按明/暗分组 */
+html[data-theme$="-day"]   { --danger:#C5221F; --warn:#B06000; --ok:#137333; }
+html[data-theme$="-night"] { --danger:#F28B82; --warn:#FDD663; --ok:#81C995; }
+
+/* ========== Chrome 白昼（Material You 浅色，胶囊大圆角） ========== */
+html[data-theme="chrome-day"] {
+  --primary:#0B57D0; --on-primary:#FFFFFF;
+  --secondary:#444746; --accent:#C2E7FF; --on-accent:#001D35;
+  --bg:#FFFFFF; --surface:#F1F3F4; --surface-2:#FFFFFF;
+  --text:#1F1F1F; --text-secondary:#5F6368;
+  --border:#F1F3F4; --border-strong:#DADCE0;
+  --radius-pill:999px; --radius-card:20px; --radius-ctrl:12px; --radius-tab:12px;
+  --font-ui:"Google Sans", Roboto, "PingFang SC", sans-serif;
+  --shadow-elev:0 1px 3px rgba(60,64,67,.3), 0 4px 8px 3px rgba(60,64,67,.15);
+}
+
+/* ========== Chrome 夜间（Material You 深色） ========== */
+html[data-theme="chrome-night"] {
+  --primary:#A8C7FA; --on-primary:#062E6F;
+  --secondary:#C4C7C5; --accent:#004A77; --on-accent:#C2E7FF;
+  --bg:#202124; --surface:#2D2E31; --surface-2:#202124;
+  --text:#E3E3E3; --text-secondary:#C4C7C5;
+  --border:#3C4043; --border-strong:#3C4043;
+  --radius-pill:999px; --radius-card:20px; --radius-ctrl:12px; --radius-tab:12px;
+  --font-ui:"Google Sans", Roboto, "PingFang SC", sans-serif;
+  --shadow-elev:0 1px 3px rgba(0,0,0,.45), 0 4px 8px 3px rgba(0,0,0,.3);
+}
+
+/* ========== Edge 白昼（Fluent 2 浅色，小圆角 + 细描边） ========== */
+html[data-theme="edge-day"] {
+  --primary:#0F6CBD; --on-primary:#FFFFFF;
+  --secondary:#616161; --accent:#EBF3FC; --on-accent:#242424;
+  --bg:#FFFFFF; --surface:#F3F3F3; --surface-2:#FFFFFF;
+  --text:#242424; --text-secondary:#616161;
+  --border:#E1DFDD; --border-strong:#D1D1D1;
+  --radius-pill:4px; --radius-card:8px; --radius-ctrl:4px; --radius-tab:6px;
+  --font-ui:"Segoe UI Variable Text", "Segoe UI", "PingFang SC", sans-serif;
+  --shadow-elev:0 0 2px rgba(0,0,0,.12), 0 4px 8px rgba(0,0,0,.14);
+}
+
+/* ========== Edge 夜间（Fluent 2 深色） ========== */
+html[data-theme="edge-night"] {
+  --primary:#479EF5; --on-primary:#1B1B1B;
+  --secondary:#ADADAD; --accent:#082338; --on-accent:#FFFFFF;
+  --bg:#1F1F1F; --surface:#2B2B2B; --surface-2:#1F1F1F;
+  --text:#FFFFFF; --text-secondary:#ADADAD;
+  --border:#3D3D3D; --border-strong:#525252;
+  --radius-pill:4px; --radius-card:8px; --radius-ctrl:4px; --radius-tab:6px;
+  --font-ui:"Segoe UI Variable Text", "Segoe UI", "PingFang SC", sans-serif;
+  --shadow-elev:0 0 2px rgba(0,0,0,.24), 0 4px 8px rgba(0,0,0,.28);
+}
+
+/* ========== Firefox 白昼（Photon 紧凑密度） ========== */
+html[data-theme="firefox-day"] {
+  --primary:#0060DF; --on-primary:#FFFFFF;
+  --secondary:#5B5B66; --accent:#DEEAFC; --on-accent:#15141A;
+  --bg:#FFFFFF; --surface:#F0F0F4; --surface-2:#F0F0F4;
+  --text:#15141A; --text-secondary:#5B5B66;
+  --border:#E0E0E6; --border-strong:transparent;
+  --radius-pill:8px; --radius-card:8px; --radius-ctrl:4px; --radius-tab:8px;
+  --font-ui:system-ui, -apple-system, "Segoe UI", Roboto, "PingFang SC", sans-serif;
+  --shadow-elev:0 2px 6px rgba(21,20,26,.15), 0 8px 20px rgba(21,20,26,.12);
+}
+
+/* ========== Firefox 夜间（Photon 深色，紫灰底 + 青色点缀） ========== */
+html[data-theme="firefox-night"] {
+  --primary:#00DDFF; --on-primary:#15141A;
+  --secondary:#BFBFC9; --accent:#0250BB; --on-accent:#FBFBFE;
+  --bg:#1C1B22; --surface:#2B2A33; --surface-2:#1C1B22;
+  --text:#FBFBFE; --text-secondary:#BFBFC9;
+  --border:#3A3944; --border-strong:#52525E;
+  --radius-pill:8px; --radius-card:8px; --radius-ctrl:4px; --radius-tab:8px;
+  --font-ui:system-ui, -apple-system, "Segoe UI", Roboto, "PingFang SC", sans-serif;
+  --shadow-elev:0 2px 6px rgba(0,0,0,.4), 0 8px 20px rgba(0,0,0,.35);
+}
