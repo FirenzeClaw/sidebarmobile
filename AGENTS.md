@@ -15,25 +15,67 @@
 ```
 sidebarmobile/
 ├── AGENTS.md                  # 本文件，项目级 AI 上下文
-├── .specify/                  # speckit 脚手架（templates / memory / scripts）
-├── .kimi-code/skills/         # speckit-* 技能（由 specify init 安装）
-├── .codegraph/                # 代码索引数据库
-├── skills/                    # 预留
-└── [待补充：源码目录，业务代码尚未创建]
+├── src/
+│   ├── background/            # 后台（SW/事件页）：消息路由、授权协调、frame 上报处理
+│   │                          # permission-watch（外部撤销监听）
+│   ├── sidebar/               # 侧栏 UI
+│   │   ├── app.ts             # 装配层（视图切换、菜单接线、会话恢复）
+│   │   ├── index.html         # 侧栏页骨架
+│   │   ├── state/             # 纯逻辑状态：标签会话、网站注册表、站点设置、frame 归属
+│   │   ├── views/             # 视图：网站列表、网页浏览、降级覆盖层
+│   │   ├── components/        # 组件：导航条、弹层、悬停菜单、标签列表、徽章、图标
+│   │   └── styles/            # themes.css（六主题 token）+ app.css（消费变量）
+│   ├── content/               # content script（Tier 2 追踪：URL/标题/新窗上报）
+│   ├── adapters/              # 浏览器 API 出口：browser-api / permissions / ua-override
+│   │                          # cookie-insight / content-scripts
+│   ├── shared/                # 跨场景共用：url-policy / origin-key / messages
+│   │                          # session-store / types / permission-names
+│   │                          # capability-state / frame-report-spec（后台与侧栏共用）
+│   ├── manifests/             # 双端清单模板（构建期分流）
+│   └── icons/                 # 扩展图标（由 scripts/generate-icons.ts 生成）
+├── scripts/                   # build / fixture-server / generate-icons
+│                             # verify-t029|t041|t048|t059|t066|t073（真实浏览器检查点）
+│                             # spike-dnr-ua / spike-content-script
+├── tests/
+│   ├── unit/                  # 纯逻辑单测
+│   ├── integration/           # 授权流、持久化等集成测试
+│   └── helpers/               # mock-browser（API 替身）、fixture-lifecycle（服务生命周期）
+├── demo/                      # 已审查通过的交互原型（设计基线活样例，非产品代码）
+├── design-system/MASTER.md    # 设计基线（六主题 token、布局锁定项、组件规格）
+├── specs/                     # speckit 规格产物（spec/plan/research/data-model/contracts/tasks）
+├── dist/                      # 构建产物（chrome/ 与 firefox/），勿手工编辑
+├── .specify/                  # speckit 脚手架
+├── .kimi-code/skills/         # speckit-* 技能
+└── .codegraph/                # 代码索引数据库
 ```
 
-源码目录结构待第一个功能落地时补充（预期形态：`src/` 放 TS 源码，分 background / content / sidebar 等入口，`public/` 或 `src/manifest.json` 放扩展清单，构建产物目录勿手工编辑）。
+分层约定：`app.ts` 是唯一装配层；`state/` 与 `shared/` 为纯逻辑（可单测、不碰 DOM）；仅 `adapters/` 可触达浏览器 API（宪法 VII）。
 <!-- /AUTO:STRUCTURE -->
 
 <!-- AUTO:BUILD -->
 ## 构建与运行
 
-- 安装：`[待补充]`（尚无 `package.json`，包管理器与依赖未定）
-- 运行：`[待补充]`
-- 测试：`[待补充]`
-- Lint / 类型检查：`[待补充]`
+- 安装：`npm install`
+- 类型检查：`npm run typecheck`（tsc --noEmit，必须零错误）
+- 单元/集成测试：`npm test`（Vitest，当前 529 项）
+- 构建双端：`npm run build`（产物 `dist/chrome/`、`dist/firefox/`）
+- 夹具站点：`npm run fixtures`（六类测试页面，端口 8919）
+- Firefox 运行：`npm run run:firefox`（web-ext run --source-dir=dist/firefox）
+- Firefox 清单校验：`npx web-ext lint --source-dir dist/firefox`
+- 真实浏览器检查点（自带夹具服务，端口 8921，跑完自动清理端口）：
 
-> 以上命令必须在项目内真实可运行后才写入此处。当前项目仅有启动引导产物，无构建配置 —— **禁止臆测命令名**，待脚手架建立后由 `project-init` 更新本区。
+  ```bash
+  node --experimental-strip-types scripts/verify-t029.ts   # US1 添加与标签浏览（40 项）
+  node --experimental-strip-types scripts/verify-t041.ts   # US2 移动视口与 UA 授权（27 项）
+  node --experimental-strip-types scripts/verify-t048.ts   # US3 登录复用授权（18 项）
+  node --experimental-strip-types scripts/verify-t059.ts   # US4 嵌入降级与追踪（21 项）
+  node --experimental-strip-types scripts/verify-t066.ts   # US5 会话恢复（27 项）
+  node --experimental-strip-types scripts/verify-t073.ts   # US6 菜单三通道与压力（28 项）
+  ```
+
+- 手动加载：Chrome `chrome://extensions` → 开发者模式 → 加载已解压 → `dist/chrome`；Firefox `about:debugging` → 临时载入附加组件 → `dist/firefox/manifest.json`
+
+> 约束：验证脚本必须自带夹具服务生命周期（端口 8921）并在结束时释放端口与浏览器进程；禁止以后台常驻方式启动服务。
 <!-- /AUTO:BUILD -->
 
 ## 工具优先级
