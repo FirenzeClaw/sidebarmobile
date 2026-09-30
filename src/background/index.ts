@@ -6,6 +6,7 @@
 // 2026-09-29 | Kimi(speckit-fix) | 终审 C1：改经 adapters 出口，移除 polyfill 直引用（宪法 VII）
 // 2026-09-29 | Kimi(speckit-fix) | 终审 D1：新窗口请求改为等待侧栏决策后再补开（避免双开标签）
 // 2026-09-29 | Kimi(speckit-fix) | 终审 [建议修改]：接线 permission-watch，补齐 capabilities.changed 生产者
+// 2026-09-30 | Kimi(fix) | 用户实测反馈：request-grant 改 apply-grant，后台只复核（手势约束），不再申请权限
 
 import {
   createErrorResponse,
@@ -16,6 +17,7 @@ import {
 } from '../shared/messages.ts';
 import { STORAGE_KEYS, createDefaultSiteSettings, type SiteSettings } from '../shared/types.ts';
 import { createPermissionsPort } from '../adapters/permissions.ts';
+import type { PermissionOutcome } from '../adapters/permissions.ts';
 import {
   browserNamespace,
   createDnrSessionRuleApi,
@@ -126,6 +128,21 @@ function createCoordinator(): GrantCoordinator {
  */
 function readGrant(payload: Record<string, unknown>): GrantKind {
   return payload['grant'] === 'cookie' ? 'cookie' : 'ua';
+}
+
+/**
+ * [DONE] 读取侧栏上报的权限结论。
+ *
+ * `validateRuntimeMessage` 已逐值校验过（只放行三种取值），这里做一次收窄。
+ * 缺省值取 `denied` 而非 `granted`：形状异常时保守判定为"没拿到"，
+ * 这样一个校验漏洞不会变成一次越权授权（宪法 III）。
+ */
+function readPermissionOutcome(payload: Record<string, unknown>): PermissionOutcome {
+  const outcome = payload['outcome'];
+  if (outcome === 'granted' || outcome === 'unsupported') {
+    return outcome;
+  }
+  return 'denied';
 }
 
 /** 当前已注册 content script 的来源集合：frame 上报的归属校验依据（T056/T057） */
@@ -244,11 +261,19 @@ async function handleMessage(type: string, payload: Record<string, unknown>): Pr
   const originKey = typeof payload['originKey'] === 'string' ? payload['originKey'] : '';
 
   switch (type) {
-    case 'permissions.request-grant': {
+    case 'permissions.apply-grant': {
       const coordinator = createCoordinator();
       const current = await readSettings(originKey);
       const grant = readGrant(payload);
-      const outcome = await coordinator.requestGrant(originKey, grant, current);
+      /**
+       * 侧栏已在用户手势链内完成权限申请，这里只**复核**它上报的结论再落地。
+       *
+       * 复核不可省略：侧栏是不可信发送方（契约要求两端校验、不信任发送方），
+       * 且"对话框还开着就回报 granted"是真实可能发生的。后台照单全收会写出
+       * "标记 granted、权限不在"的分叉状态（FR-029 禁止）。
+       */
+      const reported = readPermissionOutcome(payload);
+      const outcome = await coordinator.applyGrantOutcome(originKey, grant, reported, current);
 
       await writeSettings(originKey, outcome.settings);
 

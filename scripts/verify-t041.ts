@@ -1,5 +1,6 @@
 // sidebarmobile — US2 端到端验证脚本（scripts）
 // 2026-09-29 | Kimi(speckit-implement) | T041：真实 Chromium 验证移动视口/显示模式/UA 授权/能力徽章
+// 2026-09-30 | Kimi(fix) | 用户实测反馈：权限申请移到侧栏手势链内，拒绝路径改为显式模拟拒绝
 
 /**
  * [DONE] T041 手动检查点的自动化执行器（US2 范围）。
@@ -324,12 +325,32 @@ async function runUaGrantChecks(sidebar: Page): Promise<void> {
   await sidebar.screenshot({ path: path.join(OUT_DIR, '04-ua-before-grant.png') });
 
   /**
-   * 真实点击 UA 开关，走完整用户路径：侧栏 → 消息 → 后台 → permissions.request。
+   * 真实点击 UA 开关，走完整用户路径：侧栏点击 → **侧栏内** permissions.request → 后台复核落地。
    *
-   * 自动化环境里权限对话框无法被点击（属浏览器 chrome 层 UI），Chromium 会在无用户手势时
-   * 直接判定为拒绝 —— 这恰好是本项要验证的**拒绝降级路径**。判定依据是点击后的界面状态，
-   * 而不是我们假造一个"用户点了拒绝"。
+   * 2026-09-30 修正（用户实测缺陷）：`permissions.request` 必须在用户手势的直接调用链内，
+   * 因此它现在由**侧栏**发起，不再绕后台（绕后台会丢手势，Chromium 直接抛错）。
+   *
+   * 由此带来一处检查方式的必要变化：自动化环境里权限对话框无法被点击（属浏览器 chrome 层 UI），
+   * 而**修复后的申请会悬挂等待用户裁决**（这正是修复生效的证据 —— 修复前是立即抛错）。
+   * 因此本项要验证的"拒绝降级路径"必须**显式模拟拒绝**：只替换这一次裁决，
+   * 链路其余部分（侧栏申请 → 后台复核 → 标记与能力状态）都是真实实现。
+   *
+   * 旧的写法（点一下然后等它自动变成拒绝）之所以"通过"，恰恰是因为当时申请在后台、
+   * 无手势而被 Chromium 立即拒绝 —— 那是缺陷本身，不是被测的语义。
    */
+  await sidebar.evaluate(() => {
+    const loose = chrome.permissions as unknown as { request: (...args: unknown[]) => unknown };
+    loose.request = (...args: unknown[]) => {
+      const last = args[args.length - 1];
+      if (typeof last === 'function') {
+        // 透传回调（polyfill 走回调式）；漏掉回调会让外层 Promise 悬挂，那不是拒绝
+        (last as (...cbArgs: unknown[]) => unknown)(false);
+        return undefined;
+      }
+      return Promise.resolve(false);
+    };
+  });
+
   const beforeClick = Date.now();
   await uaSwitch.click({ timeout: 10_000 });
   await sidebar.waitForTimeout(2500);

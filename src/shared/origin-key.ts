@@ -1,6 +1,7 @@
 // sidebarmobile — 精确来源键（shared）
 // 2026-09-29 | Kimi(speckit-implement) | T013：实现以通过 T012（FR-005、data-model §1）
 // 2026-09-29 | Kimi(speckit-fix) | 终审 [建议修改]：新增 originKeyTextFromUrl，消除 app/background/adapters 中五处手写来源键实现（DRY）
+// 2026-09-30 | Kimi(fix) | 用户实测反馈：originPatternFromOriginKey 从 adapters 移入，供权限规格推导在 shared 内完成
 
 import { isAllowedProtocol } from './url-policy.ts';
 
@@ -85,4 +86,23 @@ export function sameOriginKey(left: OriginKey | null, right: OriginKey | null): 
     return false;
   }
   return left.scheme === right.scheme && left.host === right.host && left.port === right.port;
+}
+
+/**
+ * [DONE] 由来源键生成 host 权限 pattern（如 `https://example.com/*`）。
+ *
+ * 从 `adapters/ua-override.ts` 移到本模块（2026-09-30 用户实测缺陷的修复）：授权申请的
+ * 权限集合改由 `shared/permission-spec.ts` 推导，而 `shared` 不得反向依赖 `adapters`
+ * （适配层才是浏览器 API 的出口，shared 是纯逻辑）。留在适配层会迫使权限规格推导逆向引用
+ * 一个会拉起 polyfill 的模块，单测在 Node 下将无法运行。
+ *
+ * **全项目只有这一处 pattern 生成**：pattern 生成规则一旦在两处漂移，会出现
+ * 「权限申请成功了但 DNR 规则不生效」这类极难定位的问题。
+ */
+export function originPatternFromOriginKey(originKeyText: string): string | null {
+  const parsed = originKeyFromUrl(originKeyText);
+  if (parsed === null) {
+    return null;
+  }
+  return `${originKeyToString(parsed)}/*`;
 }

@@ -1,11 +1,11 @@
 // sidebarmobile — UA 规则落地状态跨实例一致性测试（测试）
 // 2026-09-29 | Kimi(speckit-fix) | 终审 A4：DNR 会话规则是唯一真相，不得依赖实例内存
+// 2026-09-30 | Kimi(fix) | 用户实测反馈：申请移到侧栏后，经 createChainCoordinator 走生产两段路径
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createBrowserMock, type BrowserMock } from '../helpers/mock-browser.ts';
-import { createPermissionsPort } from '../../src/adapters/permissions.ts';
 import { createUaOverride, deriveRuleId, MOBILE_USER_AGENT, type DnrSessionRuleApi } from '../../src/adapters/ua-override.ts';
-import { createGrantCoordinator } from '../../src/background/grant-coordinator.ts';
+import { createChainCoordinator } from '../helpers/grant-flow.ts';
 import { createDefaultSiteSettings } from '../../src/shared/types.ts';
 
 const ORIGIN = 'https://example.com';
@@ -37,8 +37,8 @@ beforeEach(() => {
 
 /** 每次调用都新建协调器与 ua-override：与 background/index.ts 现在的做法一致 */
 function createFreshCoordinator() {
-  return createGrantCoordinator({
-    permissions: createPermissionsPort(mock.permissions),
+  return createChainCoordinator({
+    permissionsApi: mock.permissions,
     uaOverride: createUaOverride({ dnr: dnrApi, mobileUserAgent: MOBILE_USER_AGENT }),
   });
 }
@@ -103,8 +103,8 @@ describe('UA 规则落地状态跨实例一致（终审 A4）', () => {
       },
       // 老浏览器/替身可能没有这个查询方法：此时只能靠实例内存
     };
-    const coordinator = createGrantCoordinator({
-      permissions: createPermissionsPort(mock.permissions),
+    const coordinator = createChainCoordinator({
+      permissionsApi: mock.permissions,
       uaOverride: createUaOverride({ dnr: limitedDnr, mobileUserAgent: MOBILE_USER_AGENT }),
     });
 

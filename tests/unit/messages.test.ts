@@ -1,5 +1,6 @@
 // sidebarmobile — 消息协议单测（测试）
 // 2026-09-29 | Kimi(speckit-implement) | T014：先写失败测试（RED）
+// 2026-09-30 | Kimi(fix) | 用户实测反馈：request-grant 改名 apply-grant（申请在侧栏、后台复核落地）
 
 import { describe, expect, it } from 'vitest';
 import {
@@ -12,27 +13,27 @@ import {
 describe('validateRuntimeMessage：消息形状校验（contracts/runtime-messages.md）', () => {
   it('接受合法的权限申请消息', () => {
     const result = validateRuntimeMessage({
-      type: 'permissions.request-grant',
-      payload: { originKey: 'https://example.com', grant: 'ua' },
+      type: 'permissions.apply-grant',
+      payload: { originKey: 'https://example.com', grant: 'ua', outcome: 'granted' },
     });
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.message.type).toBe('permissions.request-grant');
+      expect(result.message.type).toBe('permissions.apply-grant');
     }
   });
 
   it('接受 cookie 授权类型', () => {
     const result = validateRuntimeMessage({
-      type: 'permissions.request-grant',
-      payload: { originKey: 'https://example.com', grant: 'cookie' },
+      type: 'permissions.apply-grant',
+      payload: { originKey: 'https://example.com', grant: 'cookie', outcome: 'denied' },
     });
     expect(result.ok).toBe(true);
   });
 
   it('拒绝未知的 grant 取值', () => {
     const result = validateRuntimeMessage({
-      type: 'permissions.request-grant',
-      payload: { originKey: 'https://example.com', grant: 'everything' },
+      type: 'permissions.apply-grant',
+      payload: { originKey: 'https://example.com', grant: 'everything', outcome: 'granted' },
     });
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -42,8 +43,8 @@ describe('validateRuntimeMessage：消息形状校验（contracts/runtime-messag
 
   it('拒绝非法的 originKey', () => {
     const result = validateRuntimeMessage({
-      type: 'permissions.request-grant',
-      payload: { originKey: 'ftp://example.com', grant: 'ua' },
+      type: 'permissions.apply-grant',
+      payload: { originKey: 'ftp://example.com', grant: 'ua', outcome: 'granted' },
     });
     expect(result.ok).toBe(false);
   });
@@ -96,7 +97,7 @@ describe('validateRuntimeMessage：消息形状校验（contracts/runtime-messag
 
 describe('isKnownMessageType：类型判别', () => {
   it('识别契约中定义的发送方向类型', () => {
-    expect(isKnownMessageType('permissions.request-grant')).toBe(true);
+    expect(isKnownMessageType('permissions.apply-grant')).toBe(true);
     expect(isKnownMessageType('permissions.revoke-grant')).toBe(true);
     expect(isKnownMessageType('capabilities.query')).toBe(true);
     expect(isKnownMessageType('frame.report')).toBe(true);

@@ -3,6 +3,7 @@
 // 2026-09-29 | Kimi(speckit-fix) | 终审 A3：revokeGrant 改逐权限名判断，避免关闭一项授权连带撤销另一项
 // 2026-09-29 | Kimi(speckit-fix) | 终审 A4：UA 规则存活改以 API 实况判定（await isApplied）
 // 2026-09-29 | Kimi(speckit-fix) | 终审 B2：Cookie 探测结论上抛 present/absent，供能力状态分档
+// 2026-09-30 | Kimi(fix) | 用户实测反馈：requestGrant → applyGrantOutcome，后台只复核不申请（手势约束）
 
 import {
   createCapabilityState,
@@ -12,9 +13,9 @@ import {
 } from '../shared/capability-state.ts';
 import { createDefaultSiteSettings, type CapabilityState, type GrantState, type SiteSettings } from '../shared/types.ts';
 import type { GrantKind } from '../shared/messages.ts';
-import { apiPermissionForGrant, type OptionalPermissionName } from '../shared/permission-names.ts';
-import type { PermissionsPort } from '../adapters/permissions.ts';
-import { originPatternFromOriginKey, type UaOverridePort } from '../adapters/ua-override.ts';
+import { permissionSpecFor } from '../shared/permission-spec.ts';
+import type { PermissionOutcome, PermissionsPort } from '../adapters/permissions.ts';
+import type { UaOverridePort } from '../adapters/ua-override.ts';
 import type { CookieInsightPort } from '../adapters/cookie-insight.ts';
 
 /**
@@ -24,10 +25,18 @@ import type { CookieInsightPort } from '../adapters/cookie-insight.ts';
  * 传入并接收更新后的副本。这样做的理由：
  *
  * 1. MV3 的 Service Worker 无常驻状态，后台本来就无法可靠保存授权标记（宪法 III）；
- * 2. 授权标记只有**一个写入者**（侧栏的状态层），不会出现后台与侧栏各存一份而逐渐分叉；
+ * 2. 授权标记只有**一个写入者**（存储，由后台消息路径写入），不会出现后台与侧栏各存一份而逐渐分叉；
  * 3. 纯输入→输出使 FR-010/FR-013/FR-030 三条规则可以被直接单测，不必启动浏览器。
  *
- * 协调器负责的只有"特权操作"：`permissions.request/remove` 与 DNR 规则注册/注销。
+ * 协调器负责的只有"特权操作"：`permissions.contains/remove` 复核与撤销，
+ * 以及 DNR 规则注册/注销、content script 注册。
+ *
+ * **申请权限不在这里**（2026-09-30 用户实测缺陷的修复）：`permissions.request()` 必须由侧栏
+ * 在用户手势的直接调用链内调用，后台收到手势已失效，Chromium 会以错误拒绝
+ * （"This function must be called during a user gesture"，实测见 scripts/verify-grant-real.ts）。
+ * 错误被适配层映射为 denied，用户看到的就是"开关点不动"。后台改为经
+ * `applyGrantOutcome` **复核**侧栏上报的结论后才落地 —— 复核是安全边界，
+ * 不信任发送方（contracts/runtime-messages.md）。
  */
 
 /** 一次授权操作的结果：拒绝与不支持都是正常降级路径 */
@@ -54,31 +63,22 @@ export interface GrantCoordinatorOptions {
 }
 
 export interface GrantCoordinator {
-  /** 用户开启某来源的某项授权（FR-010：只在此时才申请权限） */
-  requestGrant(originKey: string, grant: GrantKind, currentSettings: SiteSettings): Promise<GrantOutcome>;
+  /**
+   * 落地一次授权申请（FR-010）：**复核**侧栏上报的浏览器结论后才写标记与落规则。
+   *
+   * 权限申请本身由侧栏在手势链内完成（见模块头注释）。后台不信任侧栏声称的结论 ——
+   * 必须以 `permissions.contains` 复核，否则会出现"标记写着已授权、权限其实不在"。
+   */
+  applyGrantOutcome(
+    originKey: string,
+    grant: GrantKind,
+    reported: PermissionOutcome,
+    currentSettings: SiteSettings,
+  ): Promise<GrantOutcome>;
   /** 用户关闭授权：立即撤权限 + 清标记 + 注销规则（FR-013） */
   revokeGrant(originKey: string, grant: GrantKind, currentSettings: SiteSettings): Promise<GrantOutcome>;
   /** 现算能力状态（含权限复核；外部撤销后自动回归未授权，FR-030） */
   queryCapabilities(originKey: string, currentSettings: SiteSettings): Promise<CapabilityState>;
-}
-
-/**
- * [DONE] 该来源在某项授权下需要申请的权限集合。
- *
- * 粒度是**精确来源**（host 权限 pattern 由 OriginKey 生成），且 UA 与 Cookie 申请互不相同的
- * API 权限 —— 两者严格分离，开一个不会顺带拿到另一个（spec FR-009/FR-011）。
- *
- * DNR 权限名按平台取（见 shared/permission-names.ts）：Chrome 与 Firefox 的可选权限名不同，
- * 这是构建期决定的事实，不需要在运行时判断浏览器。
- */
-function permissionSpecFor(
-  originKey: string,
-  grant: GrantKind,
-): { permissions: readonly OptionalPermissionName[]; origins: readonly string[] } {
-  const pattern = originPatternFromOriginKey(originKey);
-  const origins = pattern === null ? [] : [pattern];
-  // Firefox 的 UA 授权只申请 host 权限（DNR API 权限随安装声明，见 permission-names.ts）
-  return { permissions: apiPermissionForGrant(grant), origins };
 }
 
 /** [DONE] 创建无状态授权协调器 */
@@ -185,12 +185,43 @@ export function createGrantCoordinator(options: GrantCoordinatorOptions): GrantC
   }
 
   return {
-    async requestGrant(
+    async applyGrantOutcome(
       originKey: string,
       grant: GrantKind,
+      reported: PermissionOutcome,
       currentSettings: SiteSettings,
     ): Promise<GrantOutcome> {
-      const outcome = await permissions.request(permissionSpecFor(originKey, grant));
+      /**
+       * 复核是安全边界：不信任侧栏声称的结论（宪法 III，contracts/runtime-messages.md）。
+       *
+       * `contains` 不是"再确认一次"的形式动作，它挡掉三类真实情形：
+       *   1. 侧栏上报 granted 但权限其实没到手（对话框被用户挂着、消息被改动）；
+       *   2. 只拿到 API 权限、没拿到该来源的 host 权限（不足以称为"对该站点已授权"）；
+       *   3. 上报与事实之间的时间窗内权限被外部撤销（FR-030）。
+       * 三种情形若照单全收，就会写出一个"标记 granted、能力 unauthorized"的分叉状态，
+       * 界面显示开关开着而实际能力未授权 —— FR-029 明确禁止。
+       *
+       * 复核按**权限规格**而非单独几个名字：申请用的是 `permissionSpecFor` 推导的整批
+       * （API 权限 + 该来源 host pattern），复核必须是同一批，否则申请与检查不是同一件事。
+       */
+      const held = await permissions.contains(permissionSpecFor(originKey, grant));
+
+      /**
+       * 复核不通过时一律按 denied 处理 —— 即便侧栏上报的正是 granted。
+       *
+       * 不区分"用户拒绝"与"侧栏谎报"：对用户而言两者都是"这次没能开启"，
+       * 且界面必须回弹到未授权（FR-029）。差别只在日志，不在用户可见语义。
+       *
+       * `unsupported` 例外地原样保留：它描述的是"浏览器根本没有这个能力"，
+       * 与复核是否通过无关（无 API 时 contains 必然为 false，不能因此改判成 denied ——
+       * 那会把"当前浏览器不支持"这句提示换成"未授权，已使用降级模式"，对用户是误导）。
+       */
+      const grantedConfirmed = reported === 'granted' && held;
+      const outcome: PermissionOutcome = grantedConfirmed
+        ? 'granted'
+        : reported === 'unsupported'
+          ? 'unsupported'
+          : 'denied';
 
       // 先按事实修正标记，再叠加本次操作结果，避免旧的失效标记污染返回值
       const base = await withReconciledSettings(originKey, currentSettings);

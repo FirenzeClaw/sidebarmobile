@@ -1,5 +1,6 @@
 // sidebarmobile — US3 端到端验证脚本（scripts）
 // 2026-09-29 | Kimi(speckit-implement) | T048：真实 Chromium 验证登录复用四态与撤销清理
+// 2026-09-30 | Kimi(fix) | 用户实测反馈：权限申请移到侧栏手势链内，拒绝路径改为显式模拟拒绝
 
 /**
  * [DONE] T048 手动检查点的自动化执行器（US3 范围，quickstart 场景 6 与 12）。
@@ -169,11 +170,29 @@ async function runFourStateChecks(sidebar: Page, fixtureOrigin: string): Promise
   /**
    * ---- 态 2 / 态 3：点击开关触发权限申请 ----
    *
-   * 自动化环境里浏览器原生权限对话框无法被点击，Chromium 在无用户手势时判为拒绝。
-   * 因此这一步走的是**拒绝/受限分支**（态 3 的一种），这恰好是自动化的可行边界。
-   * "授权成功"分支由 `tests/integration/grant-flows.test.ts` 用 mock 覆盖 —— 脚本注释如实说明，
-   * 不伪造一个"点过允许"的结果。
+   * 自动化环境里浏览器原生权限对话框无法被点击（chrome 层 UI）。
+   *
+   * 2026-09-30 修正（用户实测缺陷）：`permissions.request` 已移到侧栏的手势链内，
+   * 修复后的申请会**悬挂等待用户裁决**（修复前在后台调用则是被 Chromium 立即抛错 —— 那正是缺陷）。
+   * 因此"拒绝"这一裁决必须**显式模拟**：只替换这一次裁决，链路其余部分都是真实实现。
+   * 这样本项验证的仍是产品承诺的拒绝降级语义，而不是依赖浏览器出错。
+   *
+   * "授权成功"分支由 `tests/integration/grant-flows.test.ts` 用 mock 覆盖，
+   * 以及 `scripts/verify-grant-real.ts` 用预授权清单变体在真实浏览器里覆盖。
    */
+  await sidebar.evaluate(() => {
+    const loose = chrome.permissions as unknown as { request: (...args: unknown[]) => unknown };
+    loose.request = (...args: unknown[]) => {
+      const last = args[args.length - 1];
+      if (typeof last === 'function') {
+        // 透传回调（polyfill 走回调式）；漏掉回调会让外层 Promise 悬挂，那不是拒绝
+        (last as (...cbArgs: unknown[]) => unknown)(false);
+        return undefined;
+      }
+      return Promise.resolve(false);
+    };
+  });
+
   await cookieSwitch.click({ timeout: 10_000 });
   await sidebar.waitForTimeout(2500);
 

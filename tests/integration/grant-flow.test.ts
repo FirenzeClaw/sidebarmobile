@@ -1,18 +1,18 @@
 // sidebarmobile — 授权协调集成测试（测试）
 // 2026-09-29 | Kimi(speckit-implement) | T038：授权流规则（FR-010/FR-013/FR-029/FR-030）
+// 2026-09-30 | Kimi(fix) | 用户实测反馈：申请移到侧栏后，经 createChainCoordinator 走生产两段路径
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createBrowserMock, type BrowserMock } from '../helpers/mock-browser.ts';
-import { createPermissionsPort } from '../../src/adapters/permissions.ts';
 import { createUaOverride, MOBILE_USER_AGENT, type DnrSessionRuleApi } from '../../src/adapters/ua-override.ts';
-import { createGrantCoordinator, type GrantCoordinator } from '../../src/background/grant-coordinator.ts';
+import { createChainCoordinator, type GrantChainCoordinator } from '../helpers/grant-flow.ts';
 import { createDefaultSiteSettings, type SiteSettings } from '../../src/shared/types.ts';
 
 const ORIGIN = 'https://example.com';
 const ORIGIN_PATTERN = 'https://example.com/*';
 
 let mock: BrowserMock;
-let coordinator: GrantCoordinator;
+let coordinator: GrantChainCoordinator;
 /** 记录 DNR 规则调用，用于断言规则确实被注册/注销 */
 let dnrCalls: Array<{ removeRuleIds?: number[]; addRules?: unknown[] }>;
 /** 可切换的 DNR 可用性，模拟「可选权限未授予时 API 不存在」 */
@@ -26,8 +26,8 @@ beforeEach(() => {
       dnrCalls.push(options);
     },
   };
-  coordinator = createGrantCoordinator({
-    permissions: createPermissionsPort(mock.permissions),
+  coordinator = createChainCoordinator({
+    permissionsApi: mock.permissions,
     uaOverride: createUaOverride({ dnr: dnrApi, mobileUserAgent: MOBILE_USER_AGENT }),
   });
 });
@@ -64,8 +64,8 @@ describe('按需申请真实移动 UA（spec FR-010/FR-035）', () => {
   });
 
   it('浏览器不支持权限 API 时 reason 为 unsupported、标记回落 never', async () => {
-    const unsupportedCoordinator = createGrantCoordinator({
-      permissions: createPermissionsPort(undefined),
+    const unsupportedCoordinator = createChainCoordinator({
+      permissionsApi: undefined,
       uaOverride: createUaOverride({ dnr: dnrApi }),
     });
 
@@ -78,8 +78,8 @@ describe('按需申请真实移动 UA（spec FR-010/FR-035）', () => {
 
   it('权限到手但 DNR API 不存在时能力为 unsupported（区分于 degraded）', async () => {
     // spike 实测：可选权限未授予时整个 declarativeNetRequest 命名空间不存在
-    const noDnrCoordinator = createGrantCoordinator({
-      permissions: createPermissionsPort(mock.permissions),
+    const noDnrCoordinator = createChainCoordinator({
+      permissionsApi: mock.permissions,
       uaOverride: createUaOverride({ dnr: undefined }),
     });
 
@@ -95,8 +95,8 @@ describe('按需申请真实移动 UA（spec FR-010/FR-035）', () => {
         throw new Error('rule rejected');
       },
     };
-    const degradedCoordinator = createGrantCoordinator({
-      permissions: createPermissionsPort(mock.permissions),
+    const degradedCoordinator = createChainCoordinator({
+      permissionsApi: mock.permissions,
       uaOverride: createUaOverride({ dnr: throwingDnr }),
     });
 

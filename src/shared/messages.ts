@@ -1,6 +1,7 @@
 // sidebarmobile — 运行时消息协议（shared）
 // 2026-09-29 | Kimi(speckit-implement) | T015：实现以通过 T014（contracts/runtime-messages.md）
 // 2026-09-29 | Kimi(speckit-fix) | 终审 [建议修改]：删除三条死协议消息（tabs.open-external / ua.sync-rules / session.dirty），并为 capabilities.changed 补齐生产者
+// 2026-09-30 | Kimi(fix) | 用户实测反馈：permissions.request-grant → apply-grant，改为上报结论请后台复核落地
 
 import { parseOriginKey } from './origin-key.ts';
 import { isNavigableUrl } from './url-policy.ts';
@@ -25,11 +26,17 @@ export type GrantKind = 'ua' | 'cookie';
  *
  * - 打开外部标签页：侧栏自己经 `adapters/browser-api.ts` 的 `tabsApi` 完成，无需绕后台；
  * - 会话写入结果（FR-032）：写入发生在侧栏进程内，结果直接由 `session-store` 的订阅分发；
- * - UA 规则同步：规则的注册/注销已包含在授权协调器里（`permissions.request-grant` /
+ * - UA 规则同步：规则的注册/注销已包含在授权协调器里（`permissions.apply-grant` /
  *   `permissions.revoke-grant` 的执行路径中）。
+ *
+ * **`permissions.request-grant` 已拆为两件事**（2026-09-30 用户实测缺陷）：
+ * 权限申请必须由侧栏在用户手势链内执行（`permissions.request` 的浏览器硬性约束），
+ * 后台只负责**复核并落地**副作用 —— 因此消息名改为 `permissions.apply-grant`，
+ * 语义是"我（侧栏）申请完了，结论是这个，请你复核后落地"，而不是"请你申请"。
+ * 保留旧名会误导下一个读代码的人以为申请仍在后台发生。
  */
 export type RuntimeMessageType =
-  | 'permissions.request-grant'
+  | 'permissions.apply-grant'
   | 'permissions.revoke-grant'
   | 'capabilities.query'
   | 'frame.report'
@@ -37,7 +44,7 @@ export type RuntimeMessageType =
   | 'capabilities.changed';
 
 const KNOWN_MESSAGE_TYPES: readonly RuntimeMessageType[] = [
-  'permissions.request-grant',
+  'permissions.apply-grant',
   'permissions.revoke-grant',
   'capabilities.query',
   'frame.report',
@@ -93,7 +100,28 @@ export function validateRuntimeMessage(input: unknown): MessageValidation {
  */
 function validatePayload(type: RuntimeMessageType, payload: Record<string, unknown>): string | null {
   switch (type) {
-    case 'permissions.request-grant':
+    case 'permissions.apply-grant': {
+      if (!isValidOriginKeyText(payload['originKey'])) {
+        return 'originKey 非法';
+      }
+      const grant = payload['grant'];
+      if (grant !== 'ua' && grant !== 'cookie') {
+        return 'grant 必须是 ua 或 cookie';
+      }
+      /**
+       * 侧栏上报的浏览器结论**必须逐值校验**（不信任发送方，宪法 III）。
+       *
+       * 只放行三种已知取值：未知取值一律拒绝而不是收窄成某个默认值 —— 收窄会让一个
+       * 被改动的消息（如 `outcome: "granted"` 写成别的）悄悄变成"拒绝授权"，
+       * 用户看到开关莫名其妙关掉却没有任何解释。拒绝则走到错误信封，行为可解释。
+       */
+      const outcome = payload['outcome'];
+      if (outcome !== 'granted' && outcome !== 'denied' && outcome !== 'unsupported') {
+        return 'outcome 必须是 granted/denied/unsupported';
+      }
+      return null;
+    }
+
     case 'permissions.revoke-grant': {
       if (!isValidOriginKeyText(payload['originKey'])) {
         return 'originKey 非法';

@@ -30,11 +30,12 @@ sidebarmobile/
 │   │                          # cookie-insight / content-scripts
 │   ├── shared/                # 跨场景共用：url-policy / origin-key / messages
 │   │                          # session-store / types / permission-names
-│   │                          # capability-state / frame-report-spec（后台与侧栏共用）
+│   │                          # capability-state / frame-report-spec / permission-spec（后台与侧栏共用）
 │   ├── manifests/             # 双端清单模板（构建期分流）
 │   └── icons/                 # 扩展图标（由 scripts/generate-icons.ts 生成）
 ├── scripts/                   # build / fixture-server / generate-icons
 │                             # verify-t029|t041|t048|t059|t066|t073|t073-menu-fix（真实浏览器检查点）
+│                             # verify-grant-real（授权手势缺陷：修复前后对比 + 完整证据链）
 │                             # spike-dnr-ua / spike-content-script
 ├── tests/
 │   ├── unit/                  # 纯逻辑单测
@@ -57,7 +58,7 @@ sidebarmobile/
 
 - 安装：`npm install`
 - 类型检查：`npm run typecheck`（tsc --noEmit，必须零错误）
-- 单元/集成测试：`npm test`（Vitest，当前 568 项）
+- 单元/集成测试：`npm test`（Vitest，当前 590 项）
 - 构建双端：`npm run build`（产物 `dist/chrome/`、`dist/firefox/`）
 - 夹具站点：`npm run fixtures`（六类测试页面，端口 8919）
 - Firefox 运行：`npm run run:firefox`（web-ext run --source-dir=dist/firefox）
@@ -72,7 +73,13 @@ sidebarmobile/
   node --experimental-strip-types scripts/verify-t066.ts   # US5 会话恢复（27 项）
   node --experimental-strip-types scripts/verify-t073.ts   # US6 菜单三通道与压力（28 项）
   node --experimental-strip-types scripts/verify-t073-menu-fix.ts  # 九宫格菜单修复：无页点 + 四格接线（40 项）
+  node --experimental-strip-types scripts/verify-grant-real.ts      # 授权手势缺陷：修复前后对比 + 授权链路（22 项）
   ```
+
+  > `verify-grant-real.ts` 的前三项是一组**修复前后对比**，需要修复前的产物留档在同目录的
+  > `.playwright-mcp/grant-fix/baseline-prefix-chrome`（该目录在 `.gitignore` 内，新克隆上不存在）。
+  > 留档生成方式：`git stash && git checkout <修复前提交> && npm run build && cp -r dist/chrome .playwright-mcp/grant-fix/baseline-prefix-chrome && git checkout - && git stash pop`。
+  > 缺失时脚本会把这些对比项如实记为失败并继续跑其余检查，不会假装验证过。
 
 - 手动加载：Chrome `chrome://extensions` → 开发者模式 → 加载已解压 → `dist/chrome`；Firefox `about:debugging` → 临时载入附加组件 → `dist/firefox/manifest.json`
 

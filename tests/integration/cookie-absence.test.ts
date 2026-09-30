@@ -1,12 +1,12 @@
 // sidebarmobile — Cookie 存在性结论的诚实映射测试（测试）
 // 2026-09-29 | Kimi(speckit-fix) | 终审 B2：未检测到会话不得显示为「已检测到会话」
+// 2026-09-30 | Kimi(fix) | 用户实测反馈：申请移到侧栏后，经 createChainCoordinator 走生产两段路径
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createBrowserMock, type BrowserMock } from '../helpers/mock-browser.ts';
-import { createPermissionsPort } from '../../src/adapters/permissions.ts';
 import { createUaOverride } from '../../src/adapters/ua-override.ts';
 import { createCookieInsight } from '../../src/adapters/cookie-insight.ts';
-import { createGrantCoordinator } from '../../src/background/grant-coordinator.ts';
+import { createChainCoordinator } from '../helpers/grant-flow.ts';
 import { createDefaultSiteSettings } from '../../src/shared/types.ts';
 import { cookieBadgeFor } from '../../src/sidebar/components/status-badge.ts';
 import { createCapabilityState } from '../../src/shared/capability-state.ts';
@@ -20,8 +20,8 @@ beforeEach(() => {
 });
 
 function createCoordinator() {
-  return createGrantCoordinator({
-    permissions: createPermissionsPort(mock.permissions),
+  return createChainCoordinator({
+    permissionsApi: mock.permissions,
     uaOverride: createUaOverride({ dnr: undefined }),
     cookieInsight: createCookieInsight(mock.cookies),
   });

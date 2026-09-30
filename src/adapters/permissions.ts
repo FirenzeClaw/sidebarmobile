@@ -1,5 +1,6 @@
 // sidebarmobile — 权限适配（adapters）
 // 2026-09-29 | Kimi(speckit-implement) | T035：实现以通过 T032（FR-010/FR-013/FR-030/FR-035）
+// 2026-09-30 | Kimi(fix) | 用户实测反馈：注明 request 必须在侧栏手势链内调用（后台只做复核/撤销）
 
 import { OPTIONAL_PERMISSION_NAMES, type OptionalPermissionName } from '../shared/permission-names.ts';
 
@@ -39,6 +40,12 @@ export interface PermissionRequestSpec {
  * 为什么要投影而不是直接用 `permissionsApi`：单测需要注入替身来模拟"用户拒绝""API 抛错"
  * "API 不存在"三种现实中都会发生但难以在真实浏览器里稳定复现的情况。投影接口与
  * `permissionsApi` 结构兼容，生产代码直接传它即可（见 `createAppPermissionsPort`）。
+ *
+ * **`request` 的使用位置有硬性约束**（2026-09-30 用户实测缺陷）：它必须在**用户手势的
+ * 直接调用链**内被调用，因此生产环境里只有侧栏的 `sidebar/state/grant-request.ts` 会调它；
+ * 后台只调 `contains` / `remove`。绕道后台（或先 await 一条消息再申请）会让 Chromium
+ * 抛出「This function must be called during a user gesture」，用户看到的是开关点不动。
+ * 这条约束由 `tests/unit/grant-gesture-chain.test.ts` 锁定。
  */
 export interface PermissionsPort {
   request(spec: PermissionRequestSpec): Promise<PermissionOutcome>;

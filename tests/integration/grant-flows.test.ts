@@ -1,12 +1,12 @@
 // sidebarmobile — 授权流四态集成测试（测试）
 // 2026-09-29 | Kimi(speckit-implement) | T043：先写失败集成测试（RED，quickstart 场景 6/12）
+// 2026-09-30 | Kimi(fix) | 用户实测反馈：申请移到侧栏后，经 createChainCoordinator 走生产两段路径
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createBrowserMock, type BrowserMock } from '../helpers/mock-browser.ts';
-import { createPermissionsPort } from '../../src/adapters/permissions.ts';
 import { createCookieInsight } from '../../src/adapters/cookie-insight.ts';
 import { createUaOverride } from '../../src/adapters/ua-override.ts';
-import { createGrantCoordinator, type GrantCoordinator } from '../../src/background/grant-coordinator.ts';
+import { createChainCoordinator, type GrantChainCoordinator } from '../helpers/grant-flow.ts';
 import { createDefaultSiteSettings, type SiteSettings } from '../../src/shared/types.ts';
 
 const ORIGIN = 'https://example.com';
@@ -15,14 +15,14 @@ const ORIGIN_PATTERN = 'https://example.com/*';
 const ORIGIN_URL = 'https://example.com/';
 
 let mock: BrowserMock;
-let coordinator: GrantCoordinator;
+let coordinator: GrantChainCoordinator;
 let cookieInsight: ReturnType<typeof createCookieInsight>;
 
 beforeEach(() => {
   mock = createBrowserMock();
   cookieInsight = createCookieInsight(mock.cookies);
-  coordinator = createGrantCoordinator({
-    permissions: createPermissionsPort(mock.permissions),
+  coordinator = createChainCoordinator({
+    permissionsApi: mock.permissions,
     uaOverride: createUaOverride({ dnr: undefined }),
     cookieInsight,
   });
@@ -97,8 +97,8 @@ describe('态 2：授权成功且检测到会话（spec FR-012）', () => {
 
 describe('态 3：受限（授权了但能力不可用，spec FR-012/FR-029）', () => {
   it('cookies API 缺失时能力为 limited 而不是 available', async () => {
-    const limitedCoordinator = createGrantCoordinator({
-      permissions: createPermissionsPort(mock.permissions),
+    const limitedCoordinator = createChainCoordinator({
+      permissionsApi: mock.permissions,
       uaOverride: createUaOverride({ dnr: undefined }),
       cookieInsight: createCookieInsight(undefined),
     });
@@ -111,8 +111,8 @@ describe('态 3：受限（授权了但能力不可用，spec FR-012/FR-029）',
   });
 
   it('探测抛错时能力为 failed（不是 available）', async () => {
-    const failingCoordinator = createGrantCoordinator({
-      permissions: createPermissionsPort(mock.permissions),
+    const failingCoordinator = createChainCoordinator({
+      permissionsApi: mock.permissions,
       uaOverride: createUaOverride({ dnr: undefined }),
       cookieInsight: createCookieInsight({
         getAll: async () => {
@@ -127,8 +127,8 @@ describe('态 3：受限（授权了但能力不可用，spec FR-012/FR-029）',
   });
 
   it('浏览器不支持权限 API 时拒绝授权，能力回未授权', async () => {
-    const unsupportedCoordinator = createGrantCoordinator({
-      permissions: createPermissionsPort(undefined),
+    const unsupportedCoordinator = createChainCoordinator({
+      permissionsApi: undefined,
       uaOverride: createUaOverride({ dnr: undefined }),
       cookieInsight,
     });

@@ -2,8 +2,9 @@
 // 2026-09-29 | Kimi(speckit-implement) | T037：按 T036 spike 结论实现 DNR 会话规则路径（FR-007/FR-010）
 // 2026-09-29 | Kimi(speckit-fix) | 终审 A4：isApplied 改为以 getSessionRules 实况为准，避免实例重建后误报已降级
 // 2026-09-29 | Kimi(speckit-fix) | 终审 [建议修改]：originPattern 改用 originKeyToString，消除手写实现
+// 2026-09-30 | Kimi(fix) | 用户实测反馈：originPatternFromOriginKey 实现移入 shared/origin-key.ts，此处改为转出
 
-import { originKeyFromUrl, originKeyToString } from '../shared/origin-key.ts';
+import { originKeyFromUrl } from '../shared/origin-key.ts';
 
 /**
  * [DONE] 真实移动 User-Agent 的改写通道（research R5 + T036 实测结论）。
@@ -105,20 +106,15 @@ export function deriveRuleId(originKey: string): number | null {
 /**
  * [DONE] 由来源键生成 host 权限 pattern。
  *
- * 与 `permissions.ts` 的同名能力保持单一实现，避免两处 pattern 生成规则漂移
- * （pattern 不一致会导致"权限申请了但规则不生效"这类难查问题）。
+ * 2026-09-30 用户实测缺陷的修复：实现已移到 `shared/origin-key.ts`，此处**转出**以保持
+ * 本模块既有的公开契约（`tests/integration/permissions.test.ts` 等按旧路径引用）。
  *
- * 来源键的序列化复用 `originKeyToString`（终审 [建议修改] DRY）：这里曾自己拼
- * `scheme://host:port`，与 origin-key.ts 重复 —— 端口归一化规则一旦改动，
- * 两处会给出不同的 pattern，而症状是"授权的站点规则不生效"。
+ * 移动理由：授权申请的权限集合改由 `shared/permission-spec.ts` 推导，而 shared 不得反向
+ * 依赖 adapters（适配层是浏览器 API 出口，shared 是纯逻辑）。pattern 生成是全项目唯一实现，
+ * 权限申请（侧栏）与复核/撤销（后台）必须推导出**同一批** pattern，
+ * 否则会出现"申请成功的权限"与"复核检查的权限"不是同一批 —— 用户点了允许却说没通过。
  */
-export function originPatternFromOriginKey(originKeyText: string): string | null {
-  const parsed = originKeyFromUrl(originKeyText);
-  if (parsed === null) {
-    return null;
-  }
-  return `${originKeyToString(parsed)}/*`;
-}
+export { originPatternFromOriginKey } from '../shared/origin-key.ts';
 
 /** [DONE] 从来源键取 hostname（DNR `requestDomains` 不含端口） */
 function hostnameFromOriginKey(originKeyText: string): string | null {

@@ -31,7 +31,9 @@ import { createSiteRegistry } from './state/site-registry.ts';
 import { createSiteSettingsStore } from './state/site-settings.ts';
 import { createSessionPersistence } from './state/session-persistence.ts';
 import { decideOpenRequest, findTabForFrameUrl as findTabForFrameUrlIn } from './state/frame-attribution.ts';
-import { createAppSessionStore, runtimeApi, tabsApi } from '../adapters/browser-api.ts';
+import { createAppSessionStore, permissionsApi, runtimeApi, tabsApi } from '../adapters/browser-api.ts';
+import { createPermissionsPort } from '../adapters/permissions.ts';
+import { requestGrantInGestureChain, type GrantApplyRequest, type GrantResponseShape } from './state/grant-request.ts';
 import { createCapabilityState } from '../shared/capability-state.ts';
 import { validateRuntimeMessage } from '../shared/messages.ts';
 import { normalizeTitle } from '../shared/frame-report-spec.ts';
@@ -936,8 +938,17 @@ function setDisplayModeFor(originKey: string, mode: DisplayMode): void {
 /**
  * [DONE] 申请某项授权（UA 或 Cookie），并在面板上如实呈现结果。
  *
+ * **权限申请必须在用户手势链内完成**（2026-09-30 用户实测缺陷的根因）：本函数由开关的
+ * click 处理器直接调用（`void requestGrantAndReport(...)`），因此 `requestGrantInGestureChain`
+ * 内部的 `permissions.request` 仍在手势链上。
+ *
+ * ⚠️ 调用约定：本函数内**不得**在申请权限之前插入任何 `await`。
+ * 手势活性有时间窗，先查一次存储、先发一条消息再申请，Chromium 就会判为无手势并抛错
+ * 「This function must be called during a user gesture」—— 表现与"把申请放回后台"完全一样
+ * （错误被映射成 denied，开关点不动、不弹对话框）。
+ *
  * 申请前把开关置为 pending 并重绘：权限对话框可能被用户放一会儿，期间界面要禁用交互，
- * 否则连点会叠加多个申请。
+ * 否则连点会叠加多个申请。重绘是同步 DOM 操作，不消耗手势时间窗。
  */
 async function requestGrantAndReport(originKey: string, kind: 'ua' | 'cookie'): Promise<void> {
   if (kind === 'ua') {
@@ -945,12 +956,18 @@ async function requestGrantAndReport(originKey: string, kind: 'ua' | 'cookie'): 
     refreshOpenSettingsPanel(originKey);
   }
 
-  const currentSettings = siteSettings.getSettings(originKey);
-  const response = await sendGrantMessage('permissions.request-grant', {
+  const response = await requestGrantInGestureChain(
+    {
+      /**
+       * 侧栏经 `adapters/permissions.ts` 对接 `browser-api.ts` 出口（宪法 VII）：
+       * 这里是扩展页，`permissions` 命名空间可用，申请会带上本次点击的手势。
+       */
+      permissions: createPermissionsPort(permissionsApi),
+      sendApply: sendGrantApply,
+    },
     originKey,
-    grant: kind,
-    settings: currentSettings,
-  });
+    kind,
+  );
 
   if (kind === 'ua') {
     uaGrantPending = false;
@@ -975,6 +992,23 @@ async function requestGrantAndReport(originKey: string, kind: 'ua' | 'cookie'): 
   await afterGrantChange(originKey, kind);
 }
 
+/**
+ * [DONE] 通知后台落地一次授权申请，并解析响应。
+ *
+ * 只上报**浏览器给出的结论**，不代后台下判断（后台会用 `permissions.contains` 复核）。
+ * 响应必须校验形状（不信任发送方）；失败返回 null，由调用方按降级路径处理。
+ *
+ * 与撤销路径共用 `sendGrantMessage` 的信封解析：两者的响应形状完全一致，
+ * 拆成两份会让"某一侧漏校验一个字段"这类问题只在一处出现。
+ */
+async function sendGrantApply(request: GrantApplyRequest): Promise<GrantResponseShape | null> {
+  return sendGrantMessage('permissions.apply-grant', {
+    originKey: request.originKey,
+    grant: request.grant,
+    outcome: request.outcome,
+  });
+}
+
 /** [DONE] 撤销某项授权的入口（含 UI 提示） */
 async function revokeGrant(originKey: string, kind: 'ua' | 'cookie'): Promise<void> {
   const response = await sendGrantMessage('permissions.revoke-grant', {
@@ -992,39 +1026,12 @@ async function revokeGrant(originKey: string, kind: 'ua' | 'cookie'): Promise<vo
 }
 
 /**
- * [DONE] 授权变化后的统一收尾：刷新能力状态 + 重绘面板 + 按新状态重载活动标签。
- *
- * **两项授权都要重载当前页**（FR-013 的"即时生效"语义）：
- * - UA 变更后不重载，页面仍是按旧 UA 渲染的那一份，用户会以为没生效；
- * - Cookie 授权变更后同理 —— 撤销后需要让页面回到"没有该来源凭据"的状态，
- *   否则界面上徽章已显示未授权、页面却仍带着登录态，两者自相矛盾。
- */
-async function afterGrantChange(originKey: string, kind: 'ua' | 'cookie'): Promise<void> {
-  await refreshCapabilities(originKey);
-  refreshOpenSettingsPanel(originKey);
-
-  const activeTab = tabs.getActiveTab();
-  if (activeTab !== null && activeTab.originKey === originKey) {
-    navigateFrame(activeTab.tabId, activeTab.currentUrl);
-    browserView.flashReload();
-  }
-  void kind;
-}
-
-/** 后台授权响应的形状（只取我们确实需要的字段） */
-interface GrantResponseShape {
-  granted: boolean;
-  reason?: 'denied' | 'unsupported';
-  state: CapabilityState;
-}
-
-/**
  * [DONE] 发送授权类消息并解析响应。
  *
  * 响应必须校验形状（不信任发送方）；失败返回 null，由调用方按降级路径处理。
  */
 async function sendGrantMessage(
-  type: 'permissions.request-grant' | 'permissions.revoke-grant',
+  type: 'permissions.apply-grant' | 'permissions.revoke-grant',
   payload: Record<string, unknown>,
 ): Promise<GrantResponseShape | null> {
   const message = { type, payload };
@@ -1054,6 +1061,26 @@ async function sendGrantMessage(
   } catch {
     return null;
   }
+}
+
+/**
+ * [DONE] 授权变化后的统一收尾：刷新能力状态 + 重绘面板 + 按新状态重载活动标签。
+ *
+ * **两项授权都要重载当前页**（FR-013 的"即时生效"语义）：
+ * - UA 变更后不重载，页面仍是按旧 UA 渲染的那一份，用户会以为没生效；
+ * - Cookie 授权变更后同理 —— 撤销后需要让页面回到"没有该来源凭据"的状态，
+ *   否则界面上徽章已显示未授权、页面却仍带着登录态，两者自相矛盾。
+ */
+async function afterGrantChange(originKey: string, kind: 'ua' | 'cookie'): Promise<void> {
+  await refreshCapabilities(originKey);
+  refreshOpenSettingsPanel(originKey);
+
+  const activeTab = tabs.getActiveTab();
+  if (activeTab !== null && activeTab.originKey === originKey) {
+    navigateFrame(activeTab.tabId, activeTab.currentUrl);
+    browserView.flashReload();
+  }
+  void kind;
 }
 
 /** [DONE] 把后台返回的能力状态与授权标记同步回侧栏状态 */
