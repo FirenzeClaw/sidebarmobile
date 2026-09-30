@@ -8,6 +8,7 @@
 // 2026-09-29 | Kimi(speckit-fix) | 终审 D1/D2：新窗口请求由侧栏决策；设置面板绑定来源并校验后再渲染
 // 2026-09-29 | Kimi(speckit-fix) | 终审 [建议修改]：关闭标签时释放嵌入追踪资源；重绘前解绑旧菜单锚点
 // 2026-09-30 | Kimi(fix) | 用户实测反馈：九宫格补齐复制网址/历史/电脑模式/普通打开四格接线；新增历史跳转
+// 2026-09-30 | Kimi(fix) | 用户实测缺陷：授权标记同步改调 state/grant-sync（原先内联只降级不升格，点「允许」后开关弹回）
 
 import { createNavBar, createNoticeBar, createTopBar, type TopBarState } from './components/nav-bar.ts';
 import { createSheets, createToast } from './components/sheets.ts';
@@ -30,6 +31,7 @@ import { createTabSession } from './state/tab-session.ts';
 import { createSiteRegistry } from './state/site-registry.ts';
 import { createSiteSettingsStore } from './state/site-settings.ts';
 import { createSessionPersistence } from './state/session-persistence.ts';
+import { syncGrantsFromReview } from './state/grant-sync.ts';
 import { decideOpenRequest, findTabForFrameUrl as findTabForFrameUrlIn } from './state/frame-attribution.ts';
 import { createAppSessionStore, permissionsApi, runtimeApi, tabsApi } from '../adapters/browser-api.ts';
 import { createPermissionsPort } from '../adapters/permissions.ts';
@@ -1096,13 +1098,19 @@ function applySettingsFromResponse(originKey: string, response: GrantResponseSha
  * `unauthorized` 说明权限已不成立，此时标记应为未授权 —— 无论此前用户开过什么。
  * 这条规则保证侧栏显示的开关状态与真实权限始终一致（FR-030）。
  */
+/**
+ * [DONE] 把后台复核后的能力状态同步成侧栏的授权标记。
+ *
+ * 规则本体在 `state/grant-sync.ts`（纯逻辑，可直接测试）；这里只做装配：
+ * 传入站点设置存储，并按返回值决定是否需要持久化。
+ *
+ * **为什么抽出去**：这条规则原先内联在此处，测试只能靠复刻等价实现 ——
+ * 而复刻测的是复刻本身，测不出真实实现的缺陷。用户实测的「弹窗出现、点允许后无效」
+ * 正是这样漏过 590 项测试的（2026-09-30 修复）。
+ */
 function syncGrantFromState(originKey: string, state: CapabilityState): void {
-  if (state.ua === 'unauthorized' && siteSettings.getGrant(originKey, 'ua') === 'granted') {
-    siteSettings.setGrant(originKey, 'ua', 'revoked');
-  }
-  if (state.cookie === 'unauthorized' && siteSettings.getGrant(originKey, 'cookie') === 'granted') {
-    siteSettings.setGrant(originKey, 'cookie', 'revoked');
-  }
+  // 标记变更会触发 siteSettings 的 onChange → 持久化在 session-persistence 内自动调度
+  syncGrantsFromReview(siteSettings, originKey, state);
 }
 
 /** [DONE] 请求开启 UA 授权（带 pending 状态的薄封装） */
