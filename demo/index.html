@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="chrome-day">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SidebarMobile · 侧栏 UI 设计 Demo</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='3' y='2' width='18' height='20' rx='5' fill='%230B57D0'/%3E%3Crect x='7' y='6' width='10' height='2.4' rx='1.2' fill='%23fff'/%3E%3Crect x='7' y='11' width='10' height='7' rx='2' fill='%23C2E7FF'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="themes.css">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div class="stage">
+  <p class="stage-caption">SidebarMobile · 侧栏 UI 设计 Demo — 360px · 六主题 · <span id="stageThemeName">Chrome 白昼</span></p>
+
+  <div class="sidebar" id="sidebar">
+
+    <!-- 统一顶栏：网址栏（图标+文本抬头）+ 深浅主题快速翻转 -->
+    <header class="topbar">
+      <div class="urlbar" id="urlBar" aria-label="当前位置：主页">
+        <span class="urlbar-icon" id="urlBarIcon" aria-hidden="true"></span>
+        <span class="urlbar-text" id="urlBarText">主页</span>
+        <span class="urlbar-badge" id="urlBarBadge" title="地址可能未同步" aria-label="地址可能未同步" hidden>?</span>
+      </div>
+      <button id="themeFlipBtn" class="icon-btn" type="button" aria-label="切换到深色主题"></button>
+    </header>
+
+    <div class="views">
+      <!-- 视图 A：网站列表主页 -->
+      <section id="viewHome" class="view view-home" aria-label="网站列表主页">
+        <div class="home-brand">
+          <div class="brand-logo" id="brandLogo" aria-hidden="true"></div>
+          <p class="brand-name">侧栏浏览器</p>
+          <form id="addUrlForm" class="add-url" novalidate>
+            <input id="addUrlInput" type="text" autocomplete="off" spellcheck="false"
+                   placeholder="添加网址，如 https://daily.news" aria-label="添加网址（仅支持 http/https）">
+            <button id="addUrlSubmit" class="add-url-btn" type="submit" aria-label="添加并打开"></button>
+          </form>
+          <p id="addUrlError" class="add-url-error" role="alert" hidden></p>
+        </div>
+
+        <div class="home-grid-wrap">
+          <div id="siteGrid" class="site-grid" role="list" aria-label="已保存的网站"></div>
+          <p id="siteGridEmpty" class="empty-hint" hidden>还没有保存的网站，在上方输入网址添加一个吧。</p>
+        </div>
+      </section>
+
+      <!-- 视图 B：网页浏览（内容区占满，标签管理收口到弹层） -->
+      <section id="viewBrowser" class="view view-browser" aria-label="网页浏览" hidden>
+        <div id="contentArea" class="content-area" tabindex="-1" aria-label="网页内容（模拟渲染）"></div>
+      </section>
+    </div>
+
+    <!-- 底部五键导航（Via 式，双视图常驻） -->
+    <nav class="bottom-nav" aria-label="浏览器导航">
+      <button id="navBack" class="icon-btn nav-btn" type="button" aria-label="后退"></button>
+      <button id="navForward" class="icon-btn nav-btn" type="button" aria-label="前进"></button>
+      <button id="navHome" class="icon-btn nav-btn" type="button" aria-label="返回主页"></button>
+      <button id="navTabs" class="nav-btn tab-count-btn" type="button" aria-label="标签列表">
+        <span class="tab-count-box" id="navTabCount">0</span>
+      </button>
+      <button id="navMenu" class="icon-btn nav-btn" type="button" aria-label="菜单"></button>
+    </nav>
+
+    <!-- 悬停图标子菜单（共享单实例） -->
+    <div id="iconMenu" class="icon-menu" role="menu" hidden></div>
+
+    <!-- 底部弹层（遮罩 + 面板） -->
+    <div id="sheetOverlay" class="sheet-overlay" hidden></div>
+    <div id="sheet" class="sheet" role="dialog" aria-modal="true" hidden></div>
+
+    <!-- 模拟浏览器权限申请对话框 -->
+    <div id="permOverlay" class="perm-overlay" hidden>
+      <div class="perm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="permTitle" aria-describedby="permDesc">
+        <h2 id="permTitle" class="perm-title"></h2>
+        <p id="permDesc" class="perm-desc"></p>
+        <div class="perm-actions">
+          <button id="permDeny" class="btn btn-ghost" type="button">拒绝</button>
+          <button id="permAllow" class="btn btn-primary" type="button">允许</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="toast" class="toast" role="status" hidden></div>
+  </div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
