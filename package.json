@@ -1,0 +1,30 @@
+{
+  "name": "sidebarmobile",
+  "version": "0.1.0",
+  "private": true,
+  "description": "侧栏移动浏览器扩展：Chrome MV3 + Firefox 双端，侧栏内 iframe 移动浏览、多标签、按站点授权",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "build": "node --experimental-strip-types scripts/build.ts",
+    "test:e2e": "playwright test",
+    "fixtures": "node --experimental-strip-types scripts/fixture-server.ts",
+    "run:firefox": "web-ext run --source-dir=dist/firefox"
+  },
+  "dependencies": {
+    "webextension-polyfill": "^0.12.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "@types/chrome": "^0.0.287",
+    "@types/firefox-webext-browser": "^120.0.4",
+    "@types/node": "^22.10.0",
+    "@types/webextension-polyfill": "^0.12.6",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0",
+    "web-ext": "^8.3.0"
+  }
+}

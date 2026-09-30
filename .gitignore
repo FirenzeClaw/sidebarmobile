@@ -21,6 +21,8 @@ web-ext-artifacts/
 .kimi-tunnel/
 .codegraph/
 .vscode/
+# Playwright MCP 的本地产物：T029 检查点截图与报告（可随时重跑再生）
+.playwright-mcp/
 
 # 机器本地的 agent 集成目录，由 `specify init` 生成
 # 含凭据风险（specify 明确警告），且属可再生成产物
