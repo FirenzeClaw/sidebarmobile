@@ -1,5 +1,6 @@
 /* sidebarmobile — 侧栏布局与组件样式（sidebar）
  * 2026-09-29 | Kimi(speckit-implement) | T025/T026/T027：从 demo/app.css 移植并按 MASTER.md §2 布局基线精简
+ * 2026-09-30 | Kimi(fix) | 用户实测反馈：删除 .menu-dots 页点样式（菜单为单页，不得暗示可翻页）；新增历史面板样式
  * 只消费 themes.css 的 CSS 变量，禁止写死主题色值；侧栏按 360px 设计。
  */
 
@@ -562,7 +563,7 @@ button:disabled { cursor: default; }
 
 .tablist-empty { padding: 16px 18px; font-size: 12.5px; color: var(--text-secondary); }
 
-/* 九宫格菜单弹层（本切片仅提供切标签与回主页的基本形态） */
+/* 九宫格菜单弹层（单页 2×5，无页点；design-system/MASTER.md §2） */
 .menu-grid {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
@@ -595,15 +596,46 @@ button:disabled { cursor: default; }
 .menu-cell:disabled { opacity: .38; }
 .menu-cell:disabled:hover { background: none; }
 
-/* 弹层内页点（九宫格菜单底部装饰） */
-.menu-dots { display: flex; justify-content: center; gap: 6px; padding: 4px 0 14px; }
-.menu-dots i {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--text) 20%, transparent);
+/* 历史弹层（九宫格「历史」格打开：当前标签的 URL 历史栈，可点跳转） */
+.history-list { padding: 0 10px 14px; }
+.history-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
+  border-radius: var(--radius-ctrl);
+  text-align: left;
 }
-.menu-dots i.on { background: var(--primary); }
+.history-row:hover { background: color-mix(in srgb, var(--text) 7%, transparent); }
+.history-row.current { background: color-mix(in srgb, var(--primary) 13%, transparent); }
+.history-row-main { flex: 1; min-width: 0; }
+.history-row-title {
+  display: block;
+  font-size: 13px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.history-row-url {
+  display: block;
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.history-row-flag {
+  flex: none;
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--primary) 16%, transparent);
+  color: var(--primary);
+}
+.history-list-empty { padding: 20px; text-align: center; font-size: 12.5px; color: var(--text-secondary); }
 
 /* ========== 站点设置面板（FR-008/FR-029/FR-038） ========== */
 .settings-panel { padding-bottom: 8px; }

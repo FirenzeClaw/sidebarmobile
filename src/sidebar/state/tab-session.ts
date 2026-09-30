@@ -1,5 +1,6 @@
 // sidebarmobile — 标签会话状态（sidebar）
 // 2026-09-29 | Kimi(speckit-implement) | T023：实现以通过 T020（FR-014/FR-015/FR-016）
+// 2026-09-30 | Kimi(fix) | 用户实测反馈：新增 goToIndex（历史面板按索引跳转，保留前向分支）
 
 import { isNavigableUrl, normalizeUrl } from '../../shared/url-policy.ts';
 import { originKeyFromUrl, originKeyToString } from '../../shared/origin-key.ts';
@@ -45,6 +46,16 @@ export interface TabSession {
   navigate(tabId: string, url: string): BrowserTab | null;
   goBack(tabId: string): BrowserTab | null;
   goForward(tabId: string): BrowserTab | null;
+  /**
+   * 跳到历史栈中的指定位置（九宫格「历史」面板的点击）。
+   *
+   * 与 `navigate` 的关键区别：**这是"移动"而不是"新导航"** —— 栈原样保留，
+   * 当前项之后的前向分支不会被截断。放在状态层是因为"哪些操作会截断历史"是数据模型规则
+   * （spec FR-015/FR-018），散到界面层就会漂移。
+   *
+   * 跳到当前项、越界、非整数索引、标签不存在一律返回 null 且不产生通知。
+   */
+  goToIndex(tabId: string, index: number): BrowserTab | null;
   canGoBack(tabId: string): boolean;
   canGoForward(tabId: string): boolean;
   setLoadState(tabId: string, loadState: TabLoadState): boolean;
@@ -212,6 +223,34 @@ export function createTabSession(options: TabSessionOptions): TabSession {
     });
   }
 
+  /**
+   * [DONE] 历史栈内移动的统一入口：校验目标索引 → 应用 → 通知。
+   *
+   * 后退与前进最初各自写了一遍"算索引 + 校验 + 通知"，差异只在目标索引怎么算；
+   * 新增的按索引跳转（历史面板）是第三条同型路径。收敛到一处后，越界与"跳到当前项"
+   * 这类边界只有一份实现，新增入口也不会漏掉通知 —— 漏掉的表现是：地址变了，
+   * 但底栏后退/前进按钮的状态停留在切换前。
+   */
+  function moveWithinHistory(tabId: string, targetIndex: number): BrowserTab | null {
+    const tab = tabs.find((candidate) => candidate.tabId === tabId);
+    if (tab === undefined) {
+      return null;
+    }
+    // 非整数索引会取到 undefined 项；越界与原地不动都不产生导航
+    if (!Number.isInteger(targetIndex) || targetIndex < 0 || targetIndex >= tab.history.length) {
+      return null;
+    }
+    if (targetIndex === tab.historyIndex) {
+      return null;
+    }
+    const updated = moveToIndex(tabId, targetIndex);
+    if (updated === null) {
+      return null;
+    }
+    notify();
+    return updated;
+  }
+
   return {
     openTab(url: string): BrowserTab | null {
       const target = resolveNavigation(url);
@@ -282,28 +321,22 @@ export function createTabSession(options: TabSessionOptions): TabSession {
 
     goBack(tabId: string): BrowserTab | null {
       const tab = tabs.find((candidate) => candidate.tabId === tabId);
-      if (tab === undefined || tab.historyIndex <= 0) {
+      if (tab === undefined) {
         return null;
       }
-      const updated = moveToIndex(tabId, tab.historyIndex - 1);
-      if (updated === null) {
-        return null;
-      }
-      notify();
-      return updated;
+      return moveWithinHistory(tabId, tab.historyIndex - 1);
     },
 
     goForward(tabId: string): BrowserTab | null {
       const tab = tabs.find((candidate) => candidate.tabId === tabId);
-      if (tab === undefined || tab.historyIndex >= tab.history.length - 1) {
+      if (tab === undefined) {
         return null;
       }
-      const updated = moveToIndex(tabId, tab.historyIndex + 1);
-      if (updated === null) {
-        return null;
-      }
-      notify();
-      return updated;
+      return moveWithinHistory(tabId, tab.historyIndex + 1);
+    },
+
+    goToIndex(tabId: string, index: number): BrowserTab | null {
+      return moveWithinHistory(tabId, index);
     },
 
     canGoBack(tabId: string): boolean {

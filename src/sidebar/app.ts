@@ -7,6 +7,7 @@
 // 2026-09-29 | Kimi(speckit-fix) | 终审 B3/C2：上报标题走上限校验；handleFrameReport 增加来源授权校验
 // 2026-09-29 | Kimi(speckit-fix) | 终审 D1/D2：新窗口请求由侧栏决策；设置面板绑定来源并校验后再渲染
 // 2026-09-29 | Kimi(speckit-fix) | 终审 [建议修改]：关闭标签时释放嵌入追踪资源；重绘前解绑旧菜单锚点
+// 2026-09-30 | Kimi(fix) | 用户实测反馈：九宫格补齐复制网址/历史/电脑模式/普通打开四格接线；新增历史跳转
 
 import { createNavBar, createNoticeBar, createTopBar, type TopBarState } from './components/nav-bar.ts';
 import { createSheets, createToast } from './components/sheets.ts';
@@ -276,6 +277,74 @@ sheets = createSheets({
 
   onOpenSiteSettings(): void {
     openSiteSettingsPanel();
+  },
+
+  /**
+   * 复制当前标签的网址。
+   *
+   * 先在本地取到 URL 再交给 `copyToClipboard`：两者都在同一事件循环里完成，
+   * 不会出现"用户已经切走标签、复制的却是新标签地址"的错配。
+   */
+  onCopyUrl(): void {
+    const tab = tabs.getActiveTab();
+    if (tab === null) {
+      return;
+    }
+    void copyToClipboard(tab.currentUrl);
+  },
+
+  /**
+   * 打开当前标签的历史栈面板。
+   *
+   * 打开前重读一次标签：菜单是在点开时构建的，但点击与构建之间用户可能切了标签，
+   * 用构建时的快照会让面板列出另一个标签的历史（串标签）。
+   */
+  onOpenHistory(): void {
+    const tab = tabs.getActiveTab();
+    if (tab === null) {
+      return;
+    }
+    sheets.openHistory(tab);
+  },
+
+  /** 在历史栈内跳转到指定项（面板已由 openHistory 替换进去，这里只改状态并导航） */
+  onActivateHistoryEntry(url: string, index: number): void {
+    jumpToHistoryEntry(url, index);
+  },
+
+  /**
+   * 切换当前标签所属来源的显示模式。
+   *
+   * 复用 `setDisplayModeFor`（与站点设置面板、网站条目菜单同一条路径）：它已经承担了
+   * 「改设置 → 重载活动标签 → 重绘 → 提示」的完整语义。这里再写一份必然漂移 ——
+   * 例如漏掉重载，用户就会看到模式已切换但页面还是旧版面。
+   */
+  onToggleDesktopMode(): void {
+    const originKey = activeOriginKey();
+    if (originKey === null) {
+      return;
+    }
+    const next = siteSettings.getDisplayMode(originKey) === 'mobile' ? 'desktop' : 'mobile';
+    setDisplayModeFor(originKey, next);
+  },
+
+  /**
+   * 在普通浏览器标签页打开当前地址（spec FR-006）。
+   *
+   * 与降级覆盖层的按钮走同一个出口，但**不共用提示文案**：覆盖层说的是"已在当前/新标签页
+   * 打开"（它有个 where 参数），这里固定开新标签页，文案要与之区分，否则用户无法判断
+   * 自己原来那页有没有被顶掉。
+   */
+  onOpenExternal(): void {
+    const tab = tabs.getActiveTab();
+    if (tab === null) {
+      return;
+    }
+    void tabsApi.openExternal(tab.currentUrl, 'new').then(
+      () => showToast('已在普通标签页打开'),
+      // 失败时给出可操作的下一步，而不是只说"失败"
+      () => showToast('打开失败，请手动复制地址'),
+    );
   },
 
   onClosed(): void {
@@ -1034,6 +1103,44 @@ function stepHistory(direction: 'back' | 'forward'): void {
   browserView.flashReload();
   // 历史位置变化会改变后退/前进的可用性，必须重绘底栏，否则按钮状态停留在切换前
   render();
+}
+
+/**
+ * [DONE] 跳转到活动标签历史栈中的某一项（九宫格「历史」面板）。
+ *
+ * **必须走状态层的 `goToIndex` 而非 `navigate`**：后者是"新导航"语义，会截断当前项之后的
+ * 前向分支 —— 用户从历史列表点回上一页后就再也前进不回刚才那页了，底栏的前进键跟着失效。
+ * 那是数据丢失，不是显示问题。
+ *
+ * 索引与 URL 都带上是因为两者可能不同步：面板打开期间页面若又导航过（Tier 2 上报的 SPA
+ * 跳转），面板里的索引就过期了。此时按 URL 在当前栈里重新定位；连 URL 都找不到说明栈已经
+ * 换了一轮，如实告知并放弃 —— 猜一个地址去加载只会把用户带到没预期的地方。
+ */
+function jumpToHistoryEntry(url: string, index: number): void {
+  const tab = tabs.getActiveTab();
+  if (tab === null) {
+    return;
+  }
+
+  const listedUrl = tab.history[index]?.url;
+  const targetIndex = listedUrl === url ? index : tab.history.findIndex((entry) => entry.url === url);
+  if (targetIndex < 0) {
+    sheets.close();
+    showToast('该历史记录已不在这个标签中');
+    return;
+  }
+
+  /**
+   * `goToIndex` 对"目标就是当前项"返回 null（原地不动不是导航）。
+   * 这种点击是合理的（刷新当前页），因此直接按该地址重新加载；用 `navigate` 兑现
+   * 反而会在栈里插一条重复记录 —— 用户要多按一次返回键才回得去。
+   */
+  const moved = tabs.goToIndex(tab.tabId, targetIndex);
+  navigateFrame(tab.tabId, moved === null ? url : moved.currentUrl);
+  browserView.flashReload();
+  // 历史位置变化会改变后退/前进的可用性，必须重绘底栏（与 stepHistory 同理）
+  render();
+  sheets.close();
 }
 
 /**

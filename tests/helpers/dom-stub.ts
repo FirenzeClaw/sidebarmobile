@@ -1,5 +1,6 @@
 // sidebarmobile — 最小 DOM 替身（测试辅助）
 // 2026-09-29 | Kimi(speckit-fix) | 终审 B1：为侧栏视图模块提供无依赖的 DOM 环境，使真实模块可被单测
+// 2026-09-30 | Kimi(fix) | 补 disabled 属性一致性、可控定时器与 requestAnimationFrame（弹层单测需要）
 
 /**
  * [DONE] 最小 DOM 替身。
@@ -22,7 +23,6 @@ export class StubElement {
   hidden = false;
   title = '';
   src = '';
-  disabled = false;
   /** 直接赋值型属性表（setAttribute/getAttribute 的落地处） */
   readonly attributes = new Map<string, string>();
   readonly children: StubElement[] = [];
@@ -62,6 +62,38 @@ export class StubElement {
 
   constructor(tagName: string) {
     this.tagName = tagName.toUpperCase();
+  }
+
+  /**
+   * 焦点落点接收器（由 `installDomEnvironment` 安装）。
+   *
+   * `focus()` 需要把焦点写到文档级的 `activeElement` 上，而替身元素本身不持有文档引用 ——
+   * 因此用这个静态钩子把两者接起来。未安装时是 null，`focus()` 静默无操作。
+   */
+  static focusSink: ((element: StubElement) => void) | null = null;
+
+  /** [DONE] 聚焦：把焦点交给文档（弹层的"打开者记录 / 关闭回焦"依赖它） */
+  focus(): void {
+    StubElement.focusSink?.(this);
+  }
+
+  /**
+   * `disabled` 与属性表双向一致。
+   *
+   * 真实性要求：生产代码用 `createElement(..., { disabled })` 写属性，而测试代码读的是
+   * `element.disabled`（与真实浏览器一致）。若两者各存一份，会出现"元素其实已被禁用、
+   * 断言却看到 false"这种**替身自身造成的假绿**，而禁用态恰恰是本次要验证的行为。
+   */
+  get disabled(): boolean {
+    return this.attributes.has('disabled');
+  }
+
+  set disabled(value: boolean) {
+    if (value) {
+      this.attributes.set('disabled', '');
+    } else {
+      this.attributes.delete('disabled');
+    }
   }
 
   setAttribute(name: string, value: string): void {
@@ -239,6 +271,12 @@ export interface DomEnvironment {
     removeEventListener(type: string, listener: (event: Event) => void): void;
     /** 已登记的文档级监听器数量 */
     listenerCount(type: string): number;
+    /** 派发一次文档级 keydown（弹层的 Esc 关闭路径） */
+    dispatchKeydown(key: string): void;
+    /** 元素是否在文档里 */
+    contains(node: StubElement | null): boolean;
+    /** 当前聚焦元素；测试可赋值以模拟"打开弹层前焦点在哪" */
+    activeElement: StubElement | null;
     body: StubElement;
   };
   window: {
@@ -253,6 +291,15 @@ export interface DomEnvironment {
   setMeasureBudget(count: number): void;
   /** 已读取布局属性的次数（用于断言没有异常空转） */
   measureCount(): number;
+  /**
+   * 推进虚拟时钟并执行到期定时器。
+   *
+   * 弹层动画与 toast 都靠定时器收尾，测试必须能精确走到"动画已结束"那一刻，
+   * 否则"关闭后是否真的隐藏"这类断言只能靠 sleep，既慢又不稳定。
+   */
+  advanceTimers(ms: number): void;
+  /** 尚未执行的定时器数量（断言"没有残留定时器"用） */
+  pendingTimerCount(): number;
   restore(): void;
 }
 
@@ -359,6 +406,8 @@ export function installDomEnvironment(): DomEnvironment {
   }
 
   const documentStub = {
+    /** 当前聚焦元素（弹层打开时要记录"打开者"、关闭时要回焦） */
+    activeElement: null as StubElement | null,
     addEventListener(type: string, listener: (event: Event) => void): void {
       const set = documentListeners.get(type) ?? new Set();
       set.add(listener);
@@ -386,8 +435,36 @@ export function installDomEnvironment(): DomEnvironment {
     getElementById(id: string): StubElement | null {
       return registry.get(id) ?? null;
     },
+    /** 元素是否仍在文档里（弹层关闭后回焦前会以此判断触发器是否还活着） */
+    contains(node: StubElement | null): boolean {
+      return node !== null && node.isConnected;
+    },
+    /** 派发一次文档级 keydown（Esc 关闭弹层的路径） */
+    dispatchKeydown(key: string): void {
+      for (const listener of [...(documentListeners.get('keydown') ?? [])]) {
+        listener({ type: 'keydown', key, preventDefault: (): void => undefined, stopPropagation: (): void => undefined } as unknown as Event);
+      }
+    },
     body,
   };
+
+  /**
+   * 可控定时器。
+   *
+   * 弹层的升起/关闭动画与 toast 自动隐藏都靠定时器推进，而这些延迟（200ms+）在单测里
+   * 若真的等待会拖慢整套测试、且断言时机不确定。这里把 `window.setTimeout` /
+   * `requestAnimationFrame` 收敛到一个**测试可显式推进**的队列：调用 `advanceTimers(ms)`
+   * 精确走到动画结束点，断言"关闭后元素确实被隐藏"这类状态才可复现。
+   */
+  const scheduledTasks = new Map<number, { at: number; run: () => void }>();
+  let taskSequence = 0;
+  let clockMs = 0;
+
+  function schedule(delayMs: number, run: () => void): number {
+    taskSequence += 1;
+    scheduledTasks.set(taskSequence, { at: clockMs + delayMs, run });
+    return taskSequence;
+  }
 
   const windowListeners = new Map<string, Set<(event: Event) => void>>();
   const windowStub = {
@@ -398,6 +475,15 @@ export function installDomEnvironment(): DomEnvironment {
     },
     removeEventListener(type: string, listener: (event: Event) => void): void {
       windowListeners.get(type)?.delete(listener);
+    },
+    setTimeout: (run: () => void, delayMs = 0): number => schedule(delayMs, run),
+    clearTimeout: (handle: number): void => {
+      scheduledTasks.delete(handle);
+    },
+    /** 替身里 rAF 等同"下一帧"（0ms 定时器）：调用方只关心"布局后执行"，不关心帧对齐 */
+    requestAnimationFrame: (run: () => void): number => schedule(0, run),
+    cancelAnimationFrame: (handle: number): void => {
+      scheduledTasks.delete(handle);
     },
     dispatchResize(): void {
       for (const listener of [...(windowListeners.get('resize') ?? [])]) {
@@ -415,6 +501,12 @@ export function installDomEnvironment(): DomEnvironment {
   const previousWindow = Reflect.get(globalThis, 'window');
   const previousIframe = Reflect.get(globalThis, 'HTMLIFrameElement');
   const previousHtmlElement = Reflect.get(globalThis, 'HTMLElement');
+
+  // 焦点落点：元素的 focus() 写回本环境的 document.activeElement
+  const previousFocusSink = StubElement.focusSink;
+  StubElement.focusSink = (element: StubElement): void => {
+    documentStub.activeElement = element;
+  };
 
   Reflect.set(globalThis, 'document', documentStub);
   Reflect.set(globalThis, 'window', windowStub);
@@ -445,11 +537,35 @@ export function installDomEnvironment(): DomEnvironment {
     measureCount(): number {
       return measures;
     },
+    /** 推进虚拟时钟并执行到期任务（按到期时间排序，同刻按登记顺序） */
+    advanceTimers(ms: number): void {
+      clockMs += ms;
+      let progressed = true;
+      while (progressed) {
+        progressed = false;
+        const due = [...scheduledTasks.entries()]
+          .filter(([, task]) => task.at <= clockMs)
+          .sort((a, b) => a[1].at - b[1].at || a[0] - b[0]);
+        for (const [handle, task] of due) {
+          if (!scheduledTasks.has(handle)) {
+            // 同一批里已被更早的任务取消
+            continue;
+          }
+          scheduledTasks.delete(handle);
+          task.run();
+          progressed = true;
+        }
+      }
+    },
+    pendingTimerCount(): number {
+      return scheduledTasks.size;
+    },
     restore(): void {
       Reflect.set(globalThis, 'document', previousDocument);
       Reflect.set(globalThis, 'window', previousWindow);
       Reflect.set(globalThis, 'HTMLIFrameElement', previousIframe);
       Reflect.set(globalThis, 'HTMLElement', previousHtmlElement);
+      StubElement.focusSink = previousFocusSink;
     },
   };
 }

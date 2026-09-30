@@ -1,5 +1,6 @@
 // sidebarmobile — Demo 交互逻辑（app.js，无框架原生 JS）
 // 2026-09-29 | 视图 A/B 切换、标签与历史栈、悬停子菜单、底部弹层、权限对话框、六主题切换。
+// 2026-09-30 | 与 MASTER.md 同步：九宫格菜单去掉页点（单页菜单不暗示可翻页）。
 // 约定：动态文本一律走 textContent；仅受信任的静态 SVG 字符串使用 innerHTML。
 
 'use strict';
@@ -963,11 +964,7 @@ function buildGridMenuSheet() {
     grid.append(btn);
   }
   wrap.append(grid);
-
-  // 底部页点指示（单页，首点高亮）
-  const dots = h('div', { class: 'menu-dots', 'aria-hidden': 'true' },
-    h('i', { class: 'on' }), h('i', {}));
-  wrap.append(dots);
+  // 单页菜单，不放页点：它会暗示"可以左右翻页"，而这里没有翻页逻辑（与 MASTER.md §2 一致）
   return wrap;
 }
 

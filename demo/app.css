@@ -1,5 +1,6 @@
 /* sidebarmobile — Demo 布局与组件样式（app.css）
  * 2026-09-29 | 只消费 themes.css 的 CSS 变量，不写死主题色值。
+ * 2026-09-30 | 与 MASTER.md 同步：删除 .menu-dots 页点样式（九宫格为单页菜单）。
  * 舞台背景为产品设计之外的中性灰（非主题色）。
  */
 
@@ -446,9 +447,6 @@ html[data-theme^="edge"] .btn, html[data-theme^="firefox"] .btn { font-weight: 6
 .menu-cell .cell-label { font-size: 10.5px; color: var(--text-secondary); white-space: nowrap; }
 .menu-cell:disabled { opacity: .38; }
 .menu-cell:disabled:hover { background: none; }
-.menu-dots { display: flex; justify-content: center; gap: 6px; padding: 4px 0 14px; }
-.menu-dots i { width: 6px; height: 6px; border-radius: 50%; background: color-mix(in srgb, var(--text) 20%, transparent); }
-.menu-dots i.on { background: var(--primary); }
 
 /* 主题选择弹层 */
 .theme-grid {
