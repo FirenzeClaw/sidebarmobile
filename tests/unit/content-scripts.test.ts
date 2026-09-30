@@ -198,3 +198,57 @@ describe('来源隔离（spec FR-038）', () => {
     expect(port.isRegistered('https://sub.example.com')).toBe(true);
   });
 });
+
+/**
+ * 挂起防护（2026-09-30 用户实测缺陷的同类问题）。
+ *
+ * `scripting` 与 DNR 一样是**刚授予**的可选权限，其 API 在权限窗口期可能永不 settle。
+ * 而本调用位于授权成功后的必经路径上（`permissions.apply-grant` → `syncContentScript`），
+ * 挂起会让整个授权流程卡死：存储不写、响应不回、开关永久停在灰色。
+ *
+ * 修法与 DNR 一致：套超时，超时按失败如实降级（Tier 2 → Tier 1 不确定态）。
+ */
+describe('scripting 调用挂起必须被超时截断', () => {
+  it('registerContentScripts 挂起时 register 在超时内返回 false', async () => {
+    const hanging = createContentScriptPort({
+      scripting: {
+        registerContentScripts: () => new Promise<void>(() => {
+          // 故意永不 settle：模拟权限窗口期挂起
+        }),
+        unregisterContentScripts: async () => {},
+        getRegisteredContentScripts: async () => [],
+      },
+    });
+
+    const start = Date.now();
+    const result = await hanging.register('https://example.com');
+    const elapsed = Date.now() - start;
+
+    expect(elapsed).toBeLessThan(10_000);
+    expect(result).toBe(false);
+    expect(hanging.isRegistered('https://example.com')).toBe(false);
+  }, 15_000);
+
+  it('unregisterContentScripts 挂起时不卡死，且本地登记已清除', async () => {
+    const hanging = createContentScriptPort({
+      scripting: {
+        registerContentScripts: async () => {},
+        unregisterContentScripts: () => new Promise<void>(() => {
+          // 故意永不 settle
+        }),
+        getRegisteredContentScripts: async () => [],
+      },
+    });
+
+    await hanging.register('https://example.com');
+    expect(hanging.isRegistered('https://example.com')).toBe(true);
+
+    const start = Date.now();
+    await hanging.unregister('https://example.com');
+    const elapsed = Date.now() - start;
+
+    expect(elapsed).toBeLessThan(10_000);
+    // 注销失败不影响撤销授权的语义：本地登记必须已清掉，否则归属校验会误判
+    expect(hanging.isRegistered('https://example.com')).toBe(false);
+  }, 15_000);
+});

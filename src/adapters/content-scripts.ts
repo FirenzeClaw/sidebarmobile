@@ -45,6 +45,35 @@ export interface ContentScriptPort {
 /** 注册 id 前缀：与其它可能引入的脚本命名空间隔开 */
 const SCRIPT_ID_PREFIX = 'sbmb-frame-reporter-';
 
+/**
+ * scripting 调用超时上限（毫秒）。
+ *
+ * 与 `ua-override` 的 DNR 超时同源（2026-09-30 用户实测缺陷）：`scripting` 也是**刚授予**的
+ * 可选权限，其 API 在权限窗口期可能永不 settle。而本调用位于授权成功后的必经路径上
+ * （`permissions.apply-grant` → `syncContentScript`），挂起会让整个授权流程卡死 ——
+ * 存储不写、响应不回、开关永久停在灰色。
+ *
+ * 超时后如实返回失败（Tier 2 降级为 Tier 1 不确定态），不谎报已启用追踪。
+ */
+const SCRIPTING_CALL_TIMEOUT_MS = 3_000;
+
+/** [DONE] 给任意 Promise 套超时；超时抛错，由调用方的 catch 转为降级结果 */
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label} 超时`)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) {
+      clearTimeout(timer);
+    }
+  }
+}
+
 /** content script 文件路径（构建产物名，与 scripts/build.ts 的入口名一致） */
 export const FRAME_REPORTER_FILE = 'content.js';
 
@@ -117,24 +146,28 @@ export function createContentScriptPort(options: ContentScriptOptions): ContentS
       }
 
       try {
-        await scripting!.registerContentScripts!([
-          {
-            id: registration.id,
-            matches: registration.matches,
-            js: [FRAME_REPORTER_FILE],
-            /**
-             * 必须注入到所有帧：侧栏的 iframe 本身就是子框架，只注入顶层文档的话，
-             * 侧栏内容区（扩展页）之外的被测页面收不到脚本。
-             */
-            allFrames: true,
-            runAt: 'document_idle',
-          },
-        ]);
+        await withTimeout(
+          scripting!.registerContentScripts!([
+            {
+              id: registration.id,
+              matches: registration.matches,
+              js: [FRAME_REPORTER_FILE],
+              /**
+               * 必须注入到所有帧：侧栏的 iframe 本身就是子框架，只注入顶层文档的话，
+               * 侧栏内容区（扩展页）之外的被测页面收不到脚本。
+               */
+              allFrames: true,
+              runAt: 'document_idle',
+            },
+          ]),
+          SCRIPTING_CALL_TIMEOUT_MS,
+          'content script 注册',
+        );
         registered.add(originKey);
         return true;
       } catch {
-        // 注册失败（如清单未声明 scripting、来源 pattern 非法）：如实返回失败，
-        // 由能力状态显示为降级（Tier 1 不确定态），不谎报已启用追踪
+        // 注册失败（清单未声明 scripting、来源 pattern 非法）或调用超时：如实返回失败，
+        // 由能力状态显示为降级（Tier 1 不确定态），不谎报已启用追踪，也不让上游卡死
         return false;
       }
     },
@@ -149,10 +182,14 @@ export function createContentScriptPort(options: ContentScriptOptions): ContentS
       registered.delete(originKey);
 
       try {
-        await scripting!.unregisterContentScripts!({ ids: [registration.id] });
+        await withTimeout(
+          scripting!.unregisterContentScripts!({ ids: [registration.id] }),
+          SCRIPTING_CALL_TIMEOUT_MS,
+          'content script 注销',
+        );
         return true;
       } catch {
-        // 注销失败不影响撤销授权的语义：权限已被移除后脚本本就无法运行
+        // 注销失败（含超时）不影响撤销授权的语义：权限已被移除后脚本本就无法运行
         return false;
       }
     },
